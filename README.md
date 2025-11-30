@@ -6,8 +6,7 @@ Dashboard de vendas e analytics com backend **Python FastAPI** e frontend **Reac
 
 ### Backend
 - **Python 3.x** com **FastAPI** - API REST moderna e assíncrona
-- **PostgreSQL** (Supabase) - Banco de dados relacional
-- **Pandas** - Processamento e análise de dados
+- **Pandas** - Processamento e análise de dados CSV
 - **Uvicorn** - Servidor ASGI de alta performance
 
 ### Frontend
@@ -18,7 +17,7 @@ Dashboard de vendas e analytics com backend **Python FastAPI** e frontend **Reac
 - **Vite** - Build tool rápido
 
 ### Fontes de Dados
-- **Banco PostgreSQL** com tabelas `bar_zig` e `vendas_ingresso`
+- **Arquivos CSV** - Dados de `bar_zig` e `vendas_ingresso` carregados localmente
 - **Planilha Google Sheets**: [Base de Dados | Plano Geral Eventos](https://docs.google.com/spreadsheets/d/1t1KVI9E6GanMnrNR55U0ssM46GBiWN_d5Ux9qVACDi8/edit?usp=chrome_ntp)
 
 ## Estrutura do Projeto
@@ -68,8 +67,8 @@ dash-grupo-onda-gerencial/
 
 - **Node.js 20+** (para o frontend)
 - **Python 3.x** (para o backend)
-- Conta Supabase ou acesso ao banco PostgreSQL
-- Acesso de leitura à planilha compartilhada
+- Arquivos CSV com dados de bar e vendas de ingresso
+- Acesso de leitura à planilha Google Sheets compartilhada
 
 ## Configuração
 
@@ -78,9 +77,10 @@ dash-grupo-onda-gerencial/
 Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-POSTGRES_URL=postgres://user:password@host:5432/database
 GOOGLE_SHEET_URL=https://docs.google.com/spreadsheets/d/.../export?format=csv
 PORT=4000
+CSV_BAR_PATH=./data/bar_zig.csv
+CSV_VENDAS_PATH=./data/vendas_ingresso.csv
 ```
 
 ### 2. Instalação Completa

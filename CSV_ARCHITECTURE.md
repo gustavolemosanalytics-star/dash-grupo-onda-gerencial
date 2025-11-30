@@ -148,17 +148,17 @@ const {
 
 ```
 Backend:
-  1. Executa query no Supabase        →  45s (timeout em 2 min)
-  2. Carrega 3M linhas na memória     →  500 MB RAM
-  3. Serializa para JSON              →  15s
-  4. Envia pela rede                  →  1.2 GB de dados
+  1. Carrega 3M linhas de CSV        →  25s
+  2. Carrega tudo na memória         →  500 MB RAM
+  3. Serializa para JSON             →  15s
+  4. Envia pela rede                 →  1.2 GB de dados
 
 Frontend:
-  5. Recebe JSON                      →  30s
-  6. Parse JSON                       →  8s
-  7. Processa dados                   →  12s
+  5. Recebe JSON                     →  30s
+  6. Parse JSON                      →  8s
+  7. Processa dados                  →  12s
 
-Total: ~110 segundos (quase 2 minutos!)
+Total: ~90 segundos (1.5 minutos!)
 ```
 
 ### Depois (CSV Streaming + Cache)
