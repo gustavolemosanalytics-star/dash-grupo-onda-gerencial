@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart3, RefreshCcw } from 'lucide-react'
+import { RefreshCcw } from 'lucide-react'
 import { BarChart, Bar as RechartsBar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
 import { formatCurrency, formatNumber } from '../lib/formatters'
+import zigLogo from '../assets/zig_logo.png'
 
 // Tipos para dados agregados
 interface BarMetrics {
@@ -198,9 +199,11 @@ export function Bar() {
         {/* Header */}
         <header className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-onda-yellow to-onda-orange">
-              <BarChart3 className="h-6 w-6 text-gray-900" />
-            </div>
+            <img
+              src={zigLogo}
+              alt="Zig Bar"
+              className="h-16 w-16 object-contain"
+            />
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-gray-600">Operações</p>
               <h1 className="mt-1 text-3xl font-semibold text-gray-900">Bar Zig</h1>

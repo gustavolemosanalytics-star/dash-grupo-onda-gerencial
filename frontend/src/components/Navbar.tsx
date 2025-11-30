@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Beer, Ticket, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import logoOnda from '../assets/logo_onda.png'
 
 export function Navbar() {
   const location = useLocation()
@@ -20,26 +21,13 @@ export function Navbar() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <svg width="40" height="40" viewBox="0 0 200 100" className="h-10 w-auto">
-              <path
-                d="M 10 50 Q 30 20, 50 50 T 90 50"
-                stroke="black"
-                strokeWidth="3"
-                fill="none"
-                strokeLinecap="round"
-              />
-              <circle cx="100" cy="50" r="3" fill="black" />
-            </svg>
-            <div>
-              <h1 className="text-lg font-extrabold text-gray-900">
-                GRUPO ONDA
-              </h1>
-              <p className="text-[10px] font-medium tracking-wider text-gray-500">
-                INTELIGÊNCIA EM ENTRETENIMENTO
-              </p>
-            </div>
-          </div>
+          <Link to="/" className="flex items-center">
+            <img
+              src={logoOnda}
+              alt="Grupo Onda"
+              className="h-12 w-auto"
+            />
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1">

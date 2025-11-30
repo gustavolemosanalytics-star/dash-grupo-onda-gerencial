@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Ticket, RefreshCcw } from 'lucide-react'
+import { RefreshCcw } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Pie, PieChart, Cell } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { ChartCard } from '../features/dashboard/components/ChartCard'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
 import { formatCurrency, formatNumber, formatCompact } from '../lib/formatters'
+import logoVendas from '../assets/logo_vendas.png'
 
 // Tipos para dados agregados
 interface VendasMetrics {
@@ -208,9 +209,11 @@ export function VendasIngresso() {
         {/* Header */}
         <header className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600">
-              <Ticket className="h-6 w-6 text-white" />
-            </div>
+            <img
+              src={logoVendas}
+              alt="Vendas de Ingresso"
+              className="h-20 w-20 rounded-full object-cover"
+            />
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-gray-600">Bilheteria</p>
               <h1 className="mt-1 text-3xl font-semibold text-gray-900">Vendas de Ingresso</h1>
