@@ -1,5 +1,6 @@
 import pandas as pd
 import logging
+import gzip
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
@@ -17,20 +18,32 @@ class CSVLoader:
         self._cache: Dict[str, Dict[str, Any]] = {}
 
     def load_csv(self, filename: str, force_reload: bool = False) -> List[Dict[str, Any]]:
-        """Carrega CSV e retorna como lista de dicts"""
+        """Carrega CSV e retorna como lista de dicts (suporta .gz)"""
         filepath = CSV_DIR / filename
 
         if not force_reload and filename in self._cache:
             logger.info(f"[CSV] Usando cache para {filename}")
             return self._cache[filename]['data']
 
+        # Tenta arquivos .gz se o arquivo original não existir
         if not filepath.exists():
-            logger.error(f"[CSV] ❌ Arquivo não encontrado: {filepath}")
-            return []
+            gz_filepath = CSV_DIR / f"{filename}.gz"
+            if gz_filepath.exists():
+                filepath = gz_filepath
+                logger.info(f"[CSV] Usando arquivo comprimido {filepath.name}")
+            else:
+                logger.error(f"[CSV] ❌ Arquivo não encontrado: {filename} ou {filename}.gz")
+                return []
 
         try:
-            logger.info(f"[CSV] Carregando {filename}...")
-            df = pd.read_csv(filepath)
+            logger.info(f"[CSV] Carregando {filepath.name}...")
+
+            # Detecta se é arquivo comprimido
+            if filepath.suffix == '.gz':
+                with gzip.open(filepath, 'rt', encoding='utf-8') as f:
+                    df = pd.read_csv(f)
+            else:
+                df = pd.read_csv(filepath)
 
             # Converter Decimal/float columns
             numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns

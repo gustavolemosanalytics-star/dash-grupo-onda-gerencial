@@ -10,9 +10,9 @@ services:
     envVars:
       - key: PORT
         value: 4000
+      - key: GOOGLE_SHEET_BAR_URL
+        value: https://docs.google.com/spreadsheets/d/1C68_TiIwrYjuFszxdJmiIUwq7Kk42MIMv2-ysOSFpR4/export?format=csv&gid=0
+      - key: GOOGLE_SHEET_VENDAS_URL
+        value: https://docs.google.com/spreadsheets/d/1hHFo0sJnh4nAQbo0U2R1Kx95KTbyuImMu_C67YgELm0/export?format=csv&gid=0
       - key: GOOGLE_SHEET_URL
         value: https://docs.google.com/spreadsheets/d/1t1KVI9E6GanMnrNR55U0ssM46GBiWN_d5Ux9qVACDi8/export?format=csv
-      - key: CSV_BAR_PATH
-        value: ./backend/data/bar_zig_rows.csv
-      - key: CSV_VENDAS_PATH
-        value: ./backend/data/vendas_ingresso_rows.csv
