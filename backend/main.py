@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import bar_router, vendas_router, csv_export_router, sheets_router, bar_aggregated_router, vendas_aggregated_router
-from database import test_connection
 from csv_loader import csv_loader
 import logging
 
@@ -35,24 +34,18 @@ app.include_router(sheets_router, prefix="/api")  # Google Sheets endpoint
 @app.get("/api/health")
 async def health():
     """Health check básico"""
-    db_status = test_connection()
-    csv_status = len(csv_loader.load_csv("bar_zig_rows.csv")) > 0
+    bar_csv_status = len(csv_loader.load_csv("bar_zig_rows.csv")) > 0
+    vendas_csv_status = len(csv_loader.load_csv("vendas_ingresso_rows.csv")) > 0
     return {
         "status": "ok",
-        "db": db_status,
-        "csv": csv_status
+        "csv_bar": bar_csv_status,
+        "csv_vendas": vendas_csv_status
     }
 
 # Startup event
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🚀 Iniciando aplicação...")
-
-    # Testar conexão com banco (para vendas_ingresso)
-    if test_connection():
-        logger.info("✅ Banco de dados disponível (vendas_ingresso)")
-    else:
-        logger.warning("⚠️  Banco de dados indisponível - vendas_ingresso não funcionará")
+    logger.info("🚀 Iniciando aplicação (CSV Mode)...")
 
     # Carregar CSV do bar
     bar_data = csv_loader.load_csv("bar_zig_rows.csv")
@@ -60,6 +53,13 @@ async def startup_event():
         logger.info(f"✅ CSV carregado: bar_zig_rows.csv ({len(bar_data)} linhas)")
     else:
         logger.warning("⚠️  CSV bar_zig_rows.csv não encontrado ou vazio")
+
+    # Carregar CSV de vendas
+    vendas_data = csv_loader.load_csv("vendas_ingresso_rows.csv")
+    if vendas_data:
+        logger.info(f"✅ CSV carregado: vendas_ingresso_rows.csv ({len(vendas_data)} linhas)")
+    else:
+        logger.warning("⚠️  CSV vendas_ingresso_rows.csv não encontrado ou vazio")
 
 if __name__ == "__main__":
     import uvicorn

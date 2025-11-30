@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
-from database import execute_query
+from csv_loader import csv_loader
 from cache import cache
 import logging
 from decimal import Decimal
@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 
 router = APIRouter(prefix="/vendas-ingresso", tags=["Vendas de Ingresso"])
 logger = logging.getLogger(__name__)
+
+CSV_FILENAME = "vendas_ingresso_rows.csv"
 
 
 def _normalize_value(v):
@@ -45,6 +47,7 @@ def _normalize_rows(rows):
         return []
     normalized = []
     for row in rows:
+        # row pode ser dict-like, namedtuple, Record, etc.
         if isinstance(row, Mapping):
             items = row.items()
         elif hasattr(row, "_asdict"):
@@ -68,7 +71,7 @@ def _normalize_rows(rows):
 
 @router.get("/", response_model=List[Dict[str, Any]])
 async def get_vendas_ingresso(limit: int = 1000000, offset: int = 0):
-    """Retorna dados de vendas de ingresso (padrão: 1.000.000 registros mais recentes)"""
+    """Retorna dados de vendas de ingresso do CSV"""
     cache_key = f"vendas_data_{limit}_{offset}"
 
     # Tenta buscar do cache
@@ -78,22 +81,18 @@ async def get_vendas_ingresso(limit: int = 1000000, offset: int = 0):
         return cached_data
 
     try:
-        query = f"""
-            SELECT * FROM vendas_ingresso
-            ORDER BY data_venda DESC
-            LIMIT {limit} OFFSET {offset}
-        """
-        logger.debug(f"[Vendas] Executando query: {query[:100]}...")
-        data = execute_query(query)
-
-        logger.info(f"[Vendas] Raw data from DB - Type: {type(data)}, Content: {data if not data else f'{len(data)} rows'}")
+        # Carrega dados do CSV
+        data = csv_loader.load_csv(CSV_FILENAME)
 
         if not data:
-            logger.warning("[Vendas] ⚠️  Nenhum dado retornado do banco!")
+            logger.warning("[Vendas] ⚠️  Nenhum dado retornado do CSV!")
             return []
 
-        normalized = _normalize_rows(data)
-        logger.info(f"[Vendas] Normalizados {len(normalized)} registros (originais: {len(data)})")
+        # Aplica limite e offset
+        paginated_data = data[offset:offset + limit]
+
+        normalized = _normalize_rows(paginated_data)
+        logger.info(f"[Vendas] Normalizados {len(normalized)} registros (originais: {len(paginated_data)})")
 
         # Armazena no cache por 5 minutos
         cache.set(cache_key, normalized, ttl_minutes=5)
@@ -105,7 +104,7 @@ async def get_vendas_ingresso(limit: int = 1000000, offset: int = 0):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/stats", response_model=Dict[str, Any])
+@router.get("/stats", response_model=Dict[str, Any]])
 async def get_vendas_stats():
     """Retorna estatísticas agregadas de vendas de ingresso (com cache de 5 minutos)"""
     cache_key = "vendas_stats"
@@ -116,21 +115,27 @@ async def get_vendas_stats():
         return cached_data
 
     try:
-        query = """
-            SELECT
-                COUNT(*) as total_transactions,
-                SUM(quantidade) as total_tickets,
-                SUM(CAST(valor_liquido AS NUMERIC)) as total_revenue,
-                AVG(CAST(valor_liquido AS NUMERIC)) as avg_ticket_price,
-                SUM(CAST(valor_bruto AS NUMERIC)) as total_gross,
-                SUM(CAST(COALESCE(valor_desconto, 0) AS NUMERIC)) as total_discount
-            FROM vendas_ingresso
-        """
-        stats = execute_query(query)
-        result = stats[0] if stats else {}
+        data = csv_loader.load_csv(CSV_FILENAME)
 
-        if isinstance(result, Mapping):
-            result = {k: _normalize_value(v) for k, v in result.items()}
+        if not data:
+            return {}
+
+        # Calcula estatísticas
+        total_transactions = len(data)
+        total_tickets = sum(row.get('quantidade', 0) or 0 for row in data)
+        total_revenue = sum(float(row.get('valor_liquido', 0) or 0) for row in data)
+        total_gross = sum(float(row.get('valor_bruto', 0) or 0) for row in data)
+        total_discount = sum(float(row.get('valor_desconto', 0) or 0) for row in data)
+        avg_ticket_price = total_revenue / total_transactions if total_transactions > 0 else 0
+
+        result = {
+            'total_transactions': total_transactions,
+            'total_tickets': total_tickets,
+            'total_revenue': total_revenue,
+            'avg_ticket_price': avg_ticket_price,
+            'total_gross': total_gross,
+            'total_discount': total_discount
+        }
 
         # Armazena no cache por 5 minutos
         cache.set(cache_key, result, ttl_minutes=5)
@@ -145,22 +150,36 @@ async def get_vendas_stats():
 async def get_vendas_by_event():
     """Retorna vendas agrupadas por evento"""
     try:
-        query = """
-            SELECT
-                evento as nome_evento,
-                data_evento,
-                cidade_evento,
-                uf_evento,
-                SUM(quantidade) as total_quantity,
-                SUM(CAST(valor_liquido AS NUMERIC)) as total_revenue,
-                COUNT(*) as transaction_count
-            FROM vendas_ingresso
-            WHERE evento IS NOT NULL
-            GROUP BY evento, data_evento, cidade_evento, uf_evento
-            ORDER BY total_revenue DESC
-        """
-        data = execute_query(query)
-        return data
+        data = csv_loader.load_csv(CSV_FILENAME)
+
+        if not data:
+            return []
+
+        # Agrupa por evento
+        events = {}
+        for row in data:
+            evento = row.get('evento')
+            if not evento:
+                continue
+
+            if evento not in events:
+                events[evento] = {
+                    'nome_evento': evento,
+                    'data_evento': row.get('data_evento'),
+                    'cidade_evento': row.get('cidade_evento'),
+                    'uf_evento': row.get('uf_evento'),
+                    'total_quantity': 0,
+                    'total_revenue': 0,
+                    'transaction_count': 0
+                }
+
+            events[evento]['total_quantity'] += row.get('quantidade', 0) or 0
+            events[evento]['total_revenue'] += float(row.get('valor_liquido', 0) or 0)
+            events[evento]['transaction_count'] += 1
+
+        # Ordena por receita
+        result = sorted(events.values(), key=lambda x: x['total_revenue'], reverse=True)
+        return result
     except Exception as e:
         logger.error(f"[Vendas By Event] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -170,20 +189,40 @@ async def get_vendas_by_event():
 async def get_vendas_by_channel():
     """Retorna vendas agrupadas por canal (ticketeira)"""
     try:
-        query = """
-            SELECT
-                ticketeira as canal,
-                SUM(quantidade) as total_quantity,
-                SUM(CAST(valor_liquido AS NUMERIC)) as total_revenue,
-                COUNT(*) as transaction_count,
-                COUNT(DISTINCT evento) as unique_events
-            FROM vendas_ingresso
-            WHERE ticketeira IS NOT NULL
-            GROUP BY ticketeira
-            ORDER BY total_revenue DESC
-        """
-        data = execute_query(query)
-        return data
+        data = csv_loader.load_csv(CSV_FILENAME)
+
+        if not data:
+            return []
+
+        # Agrupa por ticketeira
+        channels = {}
+        for row in data:
+            ticketeira = row.get('ticketeira')
+            if not ticketeira:
+                continue
+
+            if ticketeira not in channels:
+                channels[ticketeira] = {
+                    'canal': ticketeira,
+                    'total_quantity': 0,
+                    'total_revenue': 0,
+                    'transaction_count': 0,
+                    'unique_events': set()
+                }
+
+            channels[ticketeira]['total_quantity'] += row.get('quantidade', 0) or 0
+            channels[ticketeira]['total_revenue'] += float(row.get('valor_liquido', 0) or 0)
+            channels[ticketeira]['transaction_count'] += 1
+            if row.get('evento'):
+                channels[ticketeira]['unique_events'].add(row.get('evento'))
+
+        # Converte sets para contagens
+        for channel in channels.values():
+            channel['unique_events'] = len(channel['unique_events'])
+
+        # Ordena por receita
+        result = sorted(channels.values(), key=lambda x: x['total_revenue'], reverse=True)
+        return result
     except Exception as e:
         logger.error(f"[Vendas By Channel] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -193,20 +232,41 @@ async def get_vendas_by_channel():
 async def get_vendas_by_type():
     """Retorna vendas agrupadas por tipo de ingresso"""
     try:
-        query = """
-            SELECT
-                tipo as tipo_ingresso,
-                SUM(quantidade) as total_quantity,
-                SUM(CAST(valor_liquido AS NUMERIC)) as total_revenue,
-                COUNT(*) as transaction_count,
-                AVG(CAST(valor_liquido AS NUMERIC)) as avg_price
-            FROM vendas_ingresso
-            WHERE tipo IS NOT NULL
-            GROUP BY tipo
-            ORDER BY total_revenue DESC
-        """
-        data = execute_query(query)
-        return data
+        data = csv_loader.load_csv(CSV_FILENAME)
+
+        if not data:
+            return []
+
+        # Agrupa por tipo
+        types = {}
+        for row in data:
+            tipo = row.get('tipo')
+            if not tipo:
+                continue
+
+            if tipo not in types:
+                types[tipo] = {
+                    'tipo_ingresso': tipo,
+                    'total_quantity': 0,
+                    'total_revenue': 0,
+                    'transaction_count': 0,
+                    'prices': []
+                }
+
+            valor_liquido = float(row.get('valor_liquido', 0) or 0)
+            types[tipo]['total_quantity'] += row.get('quantidade', 0) or 0
+            types[tipo]['total_revenue'] += valor_liquido
+            types[tipo]['transaction_count'] += 1
+            types[tipo]['prices'].append(valor_liquido)
+
+        # Calcula média de preço
+        for type_data in types.values():
+            prices = type_data.pop('prices')
+            type_data['avg_price'] = sum(prices) / len(prices) if prices else 0
+
+        # Ordena por receita
+        result = sorted(types.values(), key=lambda x: x['total_revenue'], reverse=True)
+        return result
     except Exception as e:
         logger.error(f"[Vendas By Type] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
