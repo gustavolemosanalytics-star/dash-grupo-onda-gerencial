@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Ticket, RefreshCcw, Loader2 } from 'lucide-react'
+import { Ticket, RefreshCcw } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Pie, PieChart, Cell } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { ChartCard } from '../features/dashboard/components/ChartCard'
@@ -197,7 +197,7 @@ export function VendasIngresso() {
     setDataEvento('')
   }
 
-  const hasActiveFilters = cidade || evento || baseResponsavel || ticketeira || dataEvento
+  const hasActiveFilters = !!(cidade || evento || baseResponsavel || ticketeira || dataEvento)
 
   if (isLoading) return <LoadingState />
   if (isError) return <EmptyState onRetry={refetchAll} />
@@ -328,11 +328,11 @@ export function VendasIngresso() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={typeData}
+                  data={typeData as any}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"

@@ -176,5 +176,3 @@ export function Filters({ onFilterChange, availableEventos = [], availableBases 
     </div>
   )
 }
-
-export type { FilterValues }

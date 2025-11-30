@@ -41,19 +41,22 @@ const AUDIENCE_KEYS = ['Público Estimado', 'publico_estimado']
 const LEADS_KEYS = ['Quantidade de leads captado', 'leads', 'captacao']
 const AVG_TICKET_KEYS = ['Ticket Médio (Bilheteria e AEB)', 'ticket_medio']
 
-const BAR_LABEL_KEYS = [
-  'categoria',
-  'Categoria',
-  'produto',
-  'Produto',
-  'item',
-  'Item',
-  'descricao',
-  'Descrição',
-]
-const VALUE_KEYS = ['valor_total', 'valor', 'total', 'receita', 'Receita', 'faturamento']
-const CHANNEL_KEYS = ['canal', 'canal_venda', 'origem', 'Canal', 'plataforma', 'Segmento']
-const QUANTITY_KEYS = ['quantidade', 'qtd', 'volume', 'tickets', 'Ingressos', 'ingressos']
+// Commented out unused variable to fix build
+// const BAR_LABEL_KEYS = [
+//   'categoria',
+//   'Categoria',
+//   'produto',
+//   'Produto',
+//   'item',
+//   'Item',
+//   'descricao',
+//   'Descrição',
+// ]
+
+// Commented out unused variables to fix build
+// const VALUE_KEYS = ['valor_total', 'valor', 'total', 'receita', 'Receita', 'faturamento']
+// const CHANNEL_KEYS = ['canal', 'canal_venda', 'origem', 'Canal', 'plataforma', 'Segmento']
+// const QUANTITY_KEYS = ['quantidade', 'qtd', 'volume', 'tickets', 'Ingressos', 'ingressos']
 
 const toTimestamp = (value?: string): number => {
   if (!value) return Date.now()
@@ -120,36 +123,38 @@ const buildEventInsights = (rows: GenericRow[]): EventInsight[] =>
     }
   })
 
-const aggregateByLabel = (rows: GenericRow[], labelKeys: string[], valueKeys: string[]) => {
-  const map = new Map<string, number>()
+// Commented out unused function to fix build
+// const aggregateByLabel = (rows: GenericRow[], labelKeys: string[], valueKeys: string[]) => {
+//   const map = new Map<string, number>()
 
-  rows.forEach((row) => {
-    const label = (pickValue<string>(row, labelKeys) ?? 'Outros').toString()
-    const amount = getNumericFromRow(row, valueKeys)
-    if (!amount) return
-    map.set(label, (map.get(label) ?? 0) + amount)
-  })
+//   rows.forEach((row) => {
+//     const label = (pickValue<string>(row, labelKeys) ?? 'Outros').toString()
+//     const amount = getNumericFromRow(row, valueKeys)
+//     if (!amount) return
+//     map.set(label, (map.get(label) ?? 0) + amount)
+//   })
 
-  return Array.from(map.entries())
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value)
-}
+//   return Array.from(map.entries())
+//     .map(([label, value]) => ({ label, value }))
+//     .sort((a, b) => b.value - a.value)
+// }
 
-const aggregateChannels = (rows: GenericRow[]) => {
-  const map = new Map<string, { value: number; quantity: number }>()
+// Commented out unused function to fix build
+// const aggregateChannels = (rows: GenericRow[]) => {
+//   const map = new Map<string, { value: number; quantity: number }>()
 
-  rows.forEach((row) => {
-    const label = (pickValue<string>(row, CHANNEL_KEYS) ?? 'Outros').toString()
-    const value = getNumericFromRow(row, VALUE_KEYS)
-    const quantity = getNumberFromRow(row, QUANTITY_KEYS)
-    const current = map.get(label) ?? { value: 0, quantity: 0 }
-    map.set(label, { value: current.value + value, quantity: current.quantity + quantity })
-  })
+//   rows.forEach((row) => {
+//     const label = (pickValue<string>(row, CHANNEL_KEYS) ?? 'Outros').toString()
+//     const value = getNumericFromRow(row, VALUE_KEYS)
+//     const quantity = getNumberFromRow(row, QUANTITY_KEYS)
+//     const current = map.get(label) ?? { value: 0, quantity: 0 }
+//     map.set(label, { value: current.value + value, quantity: current.quantity + quantity })
+//   })
 
-  return Array.from(map.entries())
-    .map(([label, data]) => ({ label, ...data }))
-    .sort((a, b) => b.value - a.value)
-}
+//   return Array.from(map.entries())
+//     .map(([label, data]) => ({ label, ...data }))
+//     .sort((a, b) => b.value - a.value)
+// }
 
 export const buildDashboardModel = (payload?: DashboardResponse): DashboardModel | null => {
   if (!payload) return null

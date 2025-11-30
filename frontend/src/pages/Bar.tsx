@@ -1,11 +1,11 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart3, RefreshCcw, Loader2 } from 'lucide-react'
+import { BarChart3, RefreshCcw } from 'lucide-react'
 import { BarChart, Bar as RechartsBar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
-import { formatCurrency, formatNumber, formatDate } from '../lib/formatters'
+import { formatCurrency, formatNumber } from '../lib/formatters'
 
 // Tipos para dados agregados
 interface BarMetrics {
@@ -187,7 +187,7 @@ export function Bar() {
     setEventDate('')
   }
 
-  const hasActiveFilters = eventoTipo || eventName || eventDate
+  const hasActiveFilters = !!(eventoTipo || eventName || eventDate)
 
   if (isLoading) return <LoadingState />
   if (isError) return <EmptyState onRetry={refetchAll} />

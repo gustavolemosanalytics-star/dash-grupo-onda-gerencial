@@ -267,7 +267,7 @@ export function ParticipacaoEngajamento({ data }: ParticipacaoEngajamentoProps) 
             <YAxis stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
             <Tooltip
               contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px' }}
-              formatter={(value: number, name: string, props: any) => {
+              formatter={(value: number, name: string) => {
                 if (name === 'Estimado' || name === 'Validados') {
                   return [value.toLocaleString('pt-BR'), name]
                 }

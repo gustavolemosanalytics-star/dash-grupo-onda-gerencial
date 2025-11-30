@@ -26,7 +26,8 @@ interface ErrorMessage {
   error: string
 }
 
-type WorkerMessage = ProgressMessage | ResultMessage | ErrorMessage
+// Commented out unused type to fix build
+// type WorkerMessage = ProgressMessage | ResultMessage | ErrorMessage
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
