@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: dash-onda-backend
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && python main.py"
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: GOOGLE_SHEET_URL
+        value: https://docs.google.com/spreadsheets/d/1t1KVI9E6GanMnrNR55U0ssM46GBiWN_d5Ux9qVACDi8/export?format=csv
+      - key: CSV_BAR_PATH
+        value: ./backend/data/bar_zig_rows.csv
+      - key: CSV_VENDAS_PATH
+        value: ./backend/data/vendas_ingresso_rows.csv
