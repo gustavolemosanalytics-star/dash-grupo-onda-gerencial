@@ -71,9 +71,9 @@ async def get_dashboard():
         planejamento_stats_sql = f"""
         SELECT
             COUNT(*) as total_eventos,
-            SUM(CAST(publico_estimado AS INT64)) as publico_total_estimado,
-            SUM(CAST(ingressos_emitidos AS INT64)) as ingressos_emitidos_total,
-            SUM(CAST(ingressos_validados AS INT64)) as ingressos_validados_total,
+            SUM(SAFE_CAST(publico_estimado AS INT64)) as publico_total_estimado,
+            SUM(SAFE_CAST(ingressos_emitidos AS INT64)) as ingressos_emitidos_total,
+            SUM(SAFE_CAST(ingressos_validados AS INT64)) as ingressos_validados_total,
             COUNT(DISTINCT cidade_do_evento) as total_cidades,
             COUNT(DISTINCT base) as total_bases
         FROM `{planejamento_table_ref}`

@@ -53,9 +53,9 @@ async def get_planejamento_stats():
         sql = f"""
         SELECT
             COUNT(*) as total_eventos,
-            SUM(CAST(publico_estimado AS INT64)) as publico_total_estimado,
-            SUM(CAST(ingressos_validados AS INT64)) as publico_total_validado,
-            SUM(CAST(ingressos_emitidos AS INT64)) as ingressos_emitidos_total,
+            SUM(SAFE_CAST(publico_estimado AS INT64)) as publico_total_estimado,
+            SUM(SAFE_CAST(ingressos_validados AS INT64)) as publico_total_validado,
+            SUM(SAFE_CAST(ingressos_emitidos AS INT64)) as ingressos_emitidos_total,
             COUNT(DISTINCT cidade_do_evento) as total_cidades,
             COUNT(DISTINCT base) as total_bases
         FROM `{table_ref}`
@@ -92,8 +92,8 @@ async def get_planejamento_by_city():
         SELECT
             cidade_do_evento as cidade,
             COUNT(*) as total_eventos,
-            SUM(CAST(publico_estimado AS INT64)) as publico_total,
-            SUM(CAST(ingressos_emitidos AS INT64)) as ingressos_emitidos
+            SUM(SAFE_CAST(publico_estimado AS INT64)) as publico_total,
+            SUM(SAFE_CAST(ingressos_emitidos AS INT64)) as ingressos_emitidos
         FROM `{table_ref}`
         WHERE cidade_do_evento IS NOT NULL AND cidade_do_evento != ''
         GROUP BY cidade_do_evento
@@ -116,8 +116,8 @@ async def get_planejamento_by_tipo():
         SELECT
             atividade as tipo_evento,
             COUNT(*) as total_eventos,
-            SUM(CAST(publico_estimado AS INT64)) as publico_total,
-            SUM(CAST(ingressos_validados AS INT64)) as ingressos_validados
+            SUM(SAFE_CAST(publico_estimado AS INT64)) as publico_total,
+            SUM(SAFE_CAST(ingressos_validados AS INT64)) as ingressos_validados
         FROM `{table_ref}`
         WHERE atividade IS NOT NULL AND atividade != ''
         GROUP BY atividade
