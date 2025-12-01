@@ -157,12 +157,12 @@ export function VisaoGeralPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
         {/* Header */}
         <header>
-          <p className="text-sm font-semibold uppercase tracking-wider text-gray-500">Planejamento</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-900">Visão Geral</h1>
+          <p className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-gray-500">Planejamento</p>
+          <h1 className="mt-1 text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Visão Geral</h1>
         </header>
 
         {/* Filters */}
@@ -173,13 +173,13 @@ export function VisaoGeralPage() {
         />
 
         {/* Tabs */}
-        <div className="overflow-x-auto">
-          <div className="flex gap-2 border-b border-gray-200">
+        <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <div className="flex gap-1 sm:gap-2 border-b border-gray-200 px-4 sm:px-0 min-w-max sm:min-w-0">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`whitespace-nowrap border-b-2 px-6 py-3 text-sm font-semibold transition ${
+                className={`whitespace-nowrap border-b-2 px-4 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition ${
                   activeTab === tab.id
                     ? 'border-onda-yellow text-gray-900'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -192,7 +192,7 @@ export function VisaoGeralPage() {
         </div>
 
         {/* Tab Content */}
-        <div className="py-4">
+        <div className="py-2 sm:py-4">
           <Suspense
             fallback={
               <div className="flex items-center justify-center py-12">
