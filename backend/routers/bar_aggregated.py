@@ -270,3 +270,57 @@ async def get_filters(
     except Exception as e:
         logger.error(f"[Bar Filters] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/upcoming-events")
+async def get_upcoming_events():
+    """Retorna eventos futuros com contagem de dias restantes"""
+    try:
+        table_ref = bq_client._get_table_ref('bar_zig')
+
+        cache_key = "bar_upcoming_events"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
+        # Query para buscar eventos futuros únicos
+        sql = f"""
+        SELECT DISTINCT
+            eventName,
+            FORMAT_DATE('%Y-%m-%d', eventDate) as event_date,
+            eventDate as event_date_raw
+        FROM `{table_ref}`
+        WHERE eventDate >= CURRENT_DATE()
+          AND isRefunded = FALSE
+          AND eventName IS NOT NULL
+        ORDER BY event_date_raw ASC
+        LIMIT 20
+        """
+
+        result = bq_client.query(sql)
+
+        events = []
+        for row in result:
+            event_name = row.get('eventName')
+            event_date = row.get('event_date')
+            if event_name and event_date:
+                events.append({
+                    "event_name": event_name,
+                    "event_date": event_date
+                })
+
+        # Remover duplicatas (mesmo evento na mesma data)
+        seen = set()
+        unique_events = []
+        for event in events:
+            key = f"{event['event_name']}_{event['event_date']}"
+            if key not in seen:
+                seen.add(key)
+                unique_events.append(event)
+
+        cache.set(cache_key, unique_events, ttl_minutes=30)
+        return unique_events
+
+    except Exception as e:
+        logger.error(f"[Bar Upcoming Events] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

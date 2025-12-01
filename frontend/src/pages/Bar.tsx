@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { RefreshCcw } from 'lucide-react'
+import { RefreshCcw, Calendar, Clock } from 'lucide-react'
 import { BarChart, Bar as RechartsBar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
@@ -52,6 +52,11 @@ interface Filters {
   event_dates: string[]
 }
 
+interface UpcomingEvent {
+  event_name: string
+  event_date: string
+}
+
 // Funções de fetch
 const buildQueryString = (params: Record<string, string>) => {
   const filtered = Object.entries(params).filter(([_, v]) => v !== '')
@@ -92,6 +97,12 @@ const fetchRecentTransactions = async (filters: Record<string, string>): Promise
 const fetchFilters = async (filters: Record<string, string>): Promise<Filters> => {
   const response = await fetch(getApiUrl('api/bar-aggregated/filters') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar filtros')
+  return response.json()
+}
+
+const fetchUpcomingEvents = async (): Promise<UpcomingEvent[]> => {
+  const response = await fetch(getApiUrl('api/bar-aggregated/upcoming-events'))
+  if (!response.ok) throw new Error('Falha ao carregar próximos eventos')
   return response.json()
 }
 
@@ -175,6 +186,33 @@ export function Bar() {
     queryFn: () => fetchRecentTransactions(filterParams),
     staleTime: 1000 * 60 * 5,
   })
+
+  const { data: upcomingEvents } = useQuery({
+    queryKey: ['barUpcomingEvents'],
+    queryFn: fetchUpcomingEvents,
+    staleTime: 1000 * 60 * 30, // 30 minutos
+  })
+
+  // Processar próximos eventos com dias restantes
+  const processedUpcomingEvents = useMemo(() => {
+    if (!upcomingEvents) return []
+
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+
+    return upcomingEvents.map(event => {
+      const eventDate = new Date(event.event_date + 'T00:00:00')
+      const diffTime = eventDate.getTime() - hoje.getTime()
+      const diasFaltando = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      return {
+        ...event,
+        eventDate,
+        dataFormatada: eventDate.toLocaleDateString('pt-BR'),
+        diasFaltando
+      }
+    }).filter(e => e.diasFaltando >= 0)
+  }, [upcomingEvents])
 
   const isLoading = metricsLoading || salesLoading || productsLoading || categoriesLoading || transactionsLoading
   const isError = !metrics && !metricsLoading
@@ -276,6 +314,64 @@ export function Bar() {
             <p className="mt-1 text-xs text-gray-500">Por transação</p>
           </div>
         </section>
+
+        {/* Próximos Eventos */}
+        {processedUpcomingEvents.length > 0 && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Calendar className="text-onda-orange" size={24} />
+              <h3 className="text-lg font-semibold text-gray-900">Próximos Eventos</h3>
+              <span className="ml-2 rounded-full bg-onda-orange px-2 py-0.5 text-xs font-bold text-white">
+                {processedUpcomingEvents.length}
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {processedUpcomingEvents.map((item, index) => {
+                const isUrgent = item.diasFaltando <= 7
+                const isToday = item.diasFaltando === 0
+
+                return (
+                  <div
+                    key={index}
+                    className={`rounded-xl border-2 p-4 transition hover:shadow-md ${
+                      isToday
+                        ? 'border-red-300 bg-red-50'
+                        : isUrgent
+                        ? 'border-orange-300 bg-orange-50'
+                        : 'border-blue-200 bg-blue-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate" title={item.event_name}>
+                          {item.event_name}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                          <Calendar size={12} />
+                          <span>{item.dataFormatada}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <div
+                          className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
+                            isToday
+                              ? 'bg-red-500 text-white'
+                              : isUrgent
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-blue-500 text-white'
+                          }`}
+                        >
+                          <Clock size={12} />
+                          {isToday ? 'HOJE' : `${item.diasFaltando}d`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Gráfico de vendas por data */}
         {salesByDate && salesByDate.length > 0 && (
