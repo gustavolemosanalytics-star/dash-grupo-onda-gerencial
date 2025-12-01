@@ -17,8 +17,8 @@ Frontend (Vercel) → Backend (Cloud Run) → BigQuery (3 tabelas)
 ### 1.1 Acessar BigQuery Console
 
 1. Acesse [BigQuery Console](https://console.cloud.google.com/bigquery)
-2. Selecione projeto: `gcp-planejamento-grupoonda`
-3. Confirme que o dataset `gerenciamento_grupo_onda` existe
+2. Selecione projeto: `cortex-analytics-479819`
+3. Confirme que o dataset `grupo_onda` existe
 
 ### 1.2 Executar SQL de Criação
 
@@ -65,21 +65,21 @@ No editor de queries do BigQuery, execute o arquivo [bigquery_setup.sql](bigquer
 
 ```sql
 -- Bar (da planilha Google Sheets)
-LOAD DATA OVERWRITE `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig`
+LOAD DATA OVERWRITE `cortex-analytics-479819.grupo_onda.bar_zig`
 FROM FILES (
   format = 'CSV',
   uris = ['https://docs.google.com/spreadsheets/d/1C68_TiIwrYjuFszxdJmiIUwq7Kk42MIMv2-ysOSFpR4/export?format=csv&gid=0']
 );
 
 -- Vendas (da planilha Google Sheets)
-LOAD DATA OVERWRITE `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.vendas_ingresso`
+LOAD DATA OVERWRITE `cortex-analytics-479819.grupo_onda.vendas_ingresso`
 FROM FILES (
   format = 'CSV',
   uris = ['https://docs.google.com/spreadsheets/d/1hHFo0sJnh4nAQbo0U2R1Kx95KTbyuImMu_C67YgELm0/export?format=csv&gid=0']
 );
 
 -- Planejamento
-LOAD DATA OVERWRITE `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.planejamento`
+LOAD DATA OVERWRITE `cortex-analytics-479819.grupo_onda.planejamento`
 FROM FILES (
   format = 'CSV',
   uris = ['https://docs.google.com/spreadsheets/d/1t1KVI9E6GanMnrNR55U0ssM46GBiWN_d5Ux9qVACDi8/export?format=csv']
@@ -95,20 +95,20 @@ FROM FILES (
 ```bash
 gcloud iam service-accounts create dashboard-backend \
   --display-name="Dashboard Backend Service Account" \
-  --project=gcp-planejamento-grupoonda
+  --project=cortex-analytics-479819
 ```
 
 ### 3.2 Dar Permissões
 
 ```bash
 # BigQuery Data Viewer
-gcloud projects add-iam-policy-binding gcp-planejamento-grupoonda \
-  --member="serviceAccount:dashboard-backend@gcp-planejamento-grupoonda.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding cortex-analytics-479819 \
+  --member="serviceAccount:dashboard-backend@cortex-analytics-479819.iam.gserviceaccount.com" \
   --role="roles/bigquery.dataViewer"
 
 # BigQuery Job User (para rodar queries)
-gcloud projects add-iam-policy-binding gcp-planejamento-grupoonda \
-  --member="serviceAccount:dashboard-backend@gcp-planejamento-grupoonda.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding cortex-analytics-479819 \
+  --member="serviceAccount:dashboard-backend@cortex-analytics-479819.iam.gserviceaccount.com" \
   --role="roles/bigquery.jobUser"
 ```
 
@@ -116,7 +116,7 @@ gcloud projects add-iam-policy-binding gcp-planejamento-grupoonda \
 
 ```bash
 gcloud iam service-accounts keys create dashboard-sa-key.json \
-  --iam-account=dashboard-backend@gcp-planejamento-grupoonda.iam.gserviceaccount.com
+  --iam-account=dashboard-backend@cortex-analytics-479819.iam.gserviceaccount.com
 ```
 
 ⚠️ **IMPORTANTE**: Guarde o arquivo `dashboard-sa-key.json` em local seguro!
@@ -143,8 +143,8 @@ Criar `.env` (local) ou configurar no Cloud Run:
 
 ```env
 # BigQuery
-GCP_PROJECT_ID=gcp-planejamento-grupoonda
-BIGQUERY_DATASET=gerenciamento_grupo_onda
+GCP_PROJECT_ID=cortex-analytics-479819
+BIGQUERY_DATASET=grupo_onda
 GOOGLE_APPLICATION_CREDENTIALS=./dashboard-sa-key.json  # Local
 # No Cloud Run, use service account attachment
 
@@ -179,20 +179,20 @@ CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
 ```bash
 # Autenticar
 gcloud auth login
-gcloud config set project gcp-planejamento-grupoonda
+gcloud config set project cortex-analytics-479819
 
 # Build
 cd backend
-gcloud builds submit --tag gcr.io/gcp-planejamento-grupoonda/dashboard-backend
+gcloud builds submit --tag gcr.io/cortex-analytics-479819/dashboard-backend
 
 # Deploy no Cloud Run
 gcloud run deploy dashboard-backend \
-  --image gcr.io/gcp-planejamento-grupoonda/dashboard-backend \
+  --image gcr.io/cortex-analytics-479819/dashboard-backend \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --service-account dashboard-backend@gcp-planejamento-grupoonda.iam.gserviceaccount.com \
-  --set-env-vars "GCP_PROJECT_ID=gcp-planejamento-grupoonda,BIGQUERY_DATASET=gerenciamento_grupo_onda" \
+  --service-account dashboard-backend@cortex-analytics-479819.iam.gserviceaccount.com \
+  --set-env-vars "GCP_PROJECT_ID=cortex-analytics-479819,BIGQUERY_DATASET=grupo_onda" \
   --memory 512Mi \
   --cpu 1 \
   --min-instances 0 \
@@ -250,7 +250,7 @@ OPTIONS (
   time_zone = 'America/Sao_Paulo'
 )
 AS
-LOAD DATA OVERWRITE `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig`
+LOAD DATA OVERWRITE `cortex-analytics-479819.grupo_onda.bar_zig`
 FROM FILES (
   format = 'CSV',
   uris = ['URL_DO_GOOGLE_SHEETS']
@@ -281,9 +281,9 @@ bq load --replace \
 ### 1. Testar BigQuery
 
 ```sql
-SELECT COUNT(*) FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig`;
-SELECT COUNT(*) FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.vendas_ingresso`;
-SELECT COUNT(*) FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.planejamento`;
+SELECT COUNT(*) FROM `cortex-analytics-479819.grupo_onda.bar_zig`;
+SELECT COUNT(*) FROM `cortex-analytics-479819.grupo_onda.vendas_ingresso`;
+SELECT COUNT(*) FROM `cortex-analytics-479819.grupo_onda.planejamento`;
 ```
 
 ### 2. Testar Backend

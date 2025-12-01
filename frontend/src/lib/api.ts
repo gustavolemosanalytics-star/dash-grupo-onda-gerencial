@@ -7,7 +7,7 @@ const BASE_URL = `${API_BASE}/api/dashboard`
 export const fetchDashboard = async (): Promise<DashboardResponse> => {
   const response = await fetch(BASE_URL)
 
-  if (\!response.ok) {
+  if (!response.ok) {
     throw new Error('Não foi possível carregar os dados do dashboard.')
   }
 

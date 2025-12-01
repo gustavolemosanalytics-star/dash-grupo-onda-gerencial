@@ -1,6 +1,6 @@
 -- ============================================================================
 -- BigQuery Table Creation Scripts
--- Dataset: gcp-planejamento-grupoonda.gerenciamento_grupo_onda
+-- Dataset: cortex-analytics-479819.grupo_onda
 -- ============================================================================
 
 -- ============================================================================
@@ -8,7 +8,7 @@
 -- Dados do planejamento geral de eventos
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.planejamento` (
+CREATE TABLE IF NOT EXISTS `cortex-analytics-479819.grupo_onda.planejamento` (
   -- Identificadores
   evento_id STRING,
   evento_nome STRING,
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 )
-PARTITION BY DATE(data_evento)
+PARTITION BY data_evento
 CLUSTER BY cidade, tipo_evento, status
 OPTIONS(
   description="Planejamento geral de eventos do Grupo Onda",
@@ -73,7 +73,7 @@ OPTIONS(
 -- Transações do bar/loja nos eventos
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig` (
+CREATE TABLE IF NOT EXISTS `cortex-analytics-479819.grupo_onda.bar_zig` (
   -- Identificadores da Transação
   transactionId STRING NOT NULL,
   transactionDate TIMESTAMP,
@@ -137,7 +137,7 @@ OPTIONS(
 -- Vendas de ingressos pelos canais de venda
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.vendas_ingresso` (
+CREATE TABLE IF NOT EXISTS `cortex-analytics-479819.grupo_onda.vendas_ingresso` (
   -- Identificadores
   id STRING NOT NULL,
   venda_id STRING,
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 )
-PARTITION BY DATE(data_evento)
+PARTITION BY data_evento
 CLUSTER BY evento, ticketeira, status
 OPTIONS(
   description="Vendas de ingressos por todos os canais",
@@ -217,7 +217,7 @@ OPTIONS(
 
 -- View: Resumo diário de vendas por evento
 CREATE MATERIALIZED VIEW IF NOT EXISTS
-`gcp-planejamento-grupoonda.gerenciamento_grupo_onda.mv_vendas_diarias`
+`cortex-analytics-479819.grupo_onda.mv_vendas_diarias`
 PARTITION BY data_evento
 AS
 SELECT
@@ -229,52 +229,53 @@ SELECT
   SUM(valor_bruto) as receita_bruta,
   SUM(valor_liquido) as receita_liquida,
   AVG(valor_liquido / quantidade) as ticket_medio
-FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.vendas_ingresso`
+FROM `cortex-analytics-479819.grupo_onda.vendas_ingresso`
 WHERE status = 'Confirmado'
 GROUP BY data_evento, evento, ticketeira;
 
 -- View: Resumo de bar por evento
 CREATE MATERIALIZED VIEW IF NOT EXISTS
-`gcp-planejamento-grupoonda.gerenciamento_grupo_onda.mv_bar_por_evento`
+`cortex-analytics-479819.grupo_onda.mv_bar_por_evento`
 PARTITION BY DATE(transactionDate)
 AS
 SELECT
   DATE(transactionDate) as data,
+  transactionDate,
   eventId,
   eventName,
   productCategory,
   COUNT(*) as total_transacoes,
   SUM(count) as quantidade_vendida,
   SUM(unitValue * count - discountValue) as receita_total
-FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig`
+FROM `cortex-analytics-479819.grupo_onda.bar_zig`
 WHERE isRefunded = FALSE
-GROUP BY data, eventId, eventName, productCategory;
+GROUP BY data, transactionDate, eventId, eventName, productCategory;
 
 -- ============================================================================
 -- Grants de Permissão (ajuste conforme sua service account)
 -- ============================================================================
 
 -- GRANT `roles/bigquery.dataViewer` ON TABLE
--- `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.planejamento`
--- TO "serviceAccount:YOUR-SERVICE-ACCOUNT@gcp-planejamento-grupoonda.iam.gserviceaccount.com";
+-- `cortex-analytics-479819.grupo_onda.planejamento`
+-- TO "serviceAccount:YOUR-SERVICE-ACCOUNT@cortex-analytics-479819.iam.gserviceaccount.com";
 
 -- GRANT `roles/bigquery.dataViewer` ON TABLE
--- `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig`
--- TO "serviceAccount:YOUR-SERVICE-ACCOUNT@gcp-planejamento-grupoonda.iam.gserviceaccount.com";
+-- `cortex-analytics-479819.grupo_onda.bar_zig`
+-- TO "serviceAccount:YOUR-SERVICE-ACCOUNT@cortex-analytics-479819.iam.gserviceaccount.com";
 
 -- GRANT `roles/bigquery.dataViewer` ON TABLE
--- `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.vendas_ingresso`
--- TO "serviceAccount:YOUR-SERVICE-ACCOUNT@gcp-planejamento-grupoonda.iam.gserviceaccount.com";
+-- `cortex-analytics-479819.grupo_onda.vendas_ingresso`
+-- TO "serviceAccount:YOUR-SERVICE-ACCOUNT@cortex-analytics-479819.iam.gserviceaccount.com";
 
 -- ============================================================================
 -- Queries de Teste
 -- ============================================================================
 
 -- Testar planejamento
--- SELECT COUNT(*) as total_eventos FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.planejamento`;
+-- SELECT COUNT(*) as total_eventos FROM `cortex-analytics-479819.grupo_onda.planejamento`;
 
 -- Testar bar
--- SELECT COUNT(*) as total_transacoes FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.bar_zig`;
+-- SELECT COUNT(*) as total_transacoes FROM `cortex-analytics-479819.grupo_onda.bar_zig`;
 
 -- Testar vendas
--- SELECT COUNT(*) as total_vendas FROM `gcp-planejamento-grupoonda.gerenciamento_grupo_onda.vendas_ingresso`;
+-- SELECT COUNT(*) as total_vendas FROM `cortex-analytics-479819.grupo_onda.vendas_ingresso`;

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
-from csv_loader import csv_loader
+from bigquery_client import bq_client
 from cache import cache
 import logging
 from decimal import Decimal
@@ -10,8 +10,6 @@ from collections.abc import Mapping, Sequence
 
 router = APIRouter(prefix="/bar", tags=["Bar"])
 logger = logging.getLogger(__name__)
-
-CSV_FILENAME = "bar_zig_rows.csv"
 
 
 def _normalize_value(v):
@@ -71,9 +69,9 @@ def _normalize_rows(rows):
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
-async def get_bar_data(limit: int = 500000, offset: int = 0):
-    """Retorna dados da tabela bar_zig do CSV (padrão: 500.000 registros)"""
-    cache_key = f"bar_data_{limit}_{offset}"
+async def get_bar_data(limit: int = 100000):
+    """Retorna dados da tabela bar_zig do BigQuery"""
+    cache_key = f"bar_data_{limit}"
 
     # Tenta buscar do cache
     cached_data = cache.get(cache_key)
@@ -82,23 +80,19 @@ async def get_bar_data(limit: int = 500000, offset: int = 0):
         return cached_data
 
     try:
-        logger.info(f"[Bar] Carregando dados do CSV: {CSV_FILENAME}")
-        data = csv_loader.load_csv(CSV_FILENAME)
+        logger.info(f"[Bar] Carregando dados do BigQuery")
+        data = bq_client.get_bar_zig(limit=limit)
 
         if not data:
-            logger.warning(f"[Bar] ⚠️  Nenhum dado encontrado em {CSV_FILENAME}")
+            logger.warning(f"[Bar] ⚠️  Nenhum dado encontrado")
             return []
 
-        # Aplicar limite e offset
-        sliced_data = data[offset:offset + limit]
+        logger.info(f"[Bar] ✅ Retornou {len(data)} registros")
 
-        normalized = _normalize_rows(sliced_data)
-        logger.info(f"[Bar] ✅ Retornou {len(normalized)} registros (offset: {offset}, limit: {limit})")
+        # Armazena no cache por 10 minutos
+        cache.set(cache_key, data, ttl_minutes=10)
 
-        # Armazena no cache por 5 minutos
-        cache.set(cache_key, normalized, ttl_minutes=5)
-
-        return normalized
+        return data
     except Exception as e:
         logger.error(f"[Bar] ❌ Erro ao buscar dados: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -106,7 +100,7 @@ async def get_bar_data(limit: int = 500000, offset: int = 0):
 
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_bar_stats():
-    """Retorna estatísticas agregadas do bar (com cache de 5 minutos)"""
+    """Retorna estatísticas agregadas do bar (com cache de 10 minutos)"""
     cache_key = "bar_stats"
 
     cached_data = cache.get(cache_key)
@@ -114,9 +108,22 @@ async def get_bar_stats():
         return cached_data
 
     try:
-        data = csv_loader.load_csv(CSV_FILENAME)
+        # Usa query SQL agregada para melhor performance
+        table_ref = bq_client._get_table_ref('bar_zig')
 
-        if not data:
+        sql = f"""
+        SELECT
+            COUNT(*) as total_transactions,
+            SUM(unitValue * count - IFNULL(discountValue, 0)) as total_revenue,
+            COUNT(DISTINCT productName) as unique_products,
+            COUNT(DISTINCT eventName) as unique_events
+        FROM `{table_ref}`
+        WHERE isRefunded = FALSE
+        """
+
+        result_list = bq_client.query(sql, cache_key='bar_stats_query')
+
+        if not result_list:
             return {
                 "total_transactions": 0,
                 "total_revenue": 0,
@@ -124,22 +131,8 @@ async def get_bar_stats():
                 "unique_events": 0
             }
 
-        total_transactions = len(data)
-        total_revenue = sum(
-            ((row.get('unitValue') or 0) * (row.get('count') or 1) - (row.get('discountValue') or 0))
-            for row in data
-        )
-        unique_products = len(set(row.get('productName') for row in data if row.get('productName')))
-        unique_events = len(set(row.get('eventName') for row in data if row.get('eventName')))
-
-        result = {
-            "total_transactions": total_transactions,
-            "total_revenue": total_revenue,
-            "unique_products": unique_products,
-            "unique_events": unique_events
-        }
-
-        cache.set(cache_key, result, ttl_minutes=5)
+        result = result_list[0]
+        cache.set(cache_key, result, ttl_minutes=10)
         return result
     except Exception as e:
         logger.error(f"[Bar Stats] Erro: {e}")
@@ -279,20 +272,20 @@ async def get_bar_by_category():
 
 
 @router.post("/reload")
-async def reload_csv():
-    """Força recarga do arquivo CSV (útil após atualização semanal)"""
+async def reload_data():
+    """Limpa cache do BigQuery"""
     try:
-        logger.info("[Bar] 🔄 Recarregando CSV...")
-        csv_loader.reload(CSV_FILENAME)
-        cache.clear()  # Limpa cache antigo
-        logger.info("[Bar] ✅ CSV recarregado e cache limpo")
-        return {"status": "reloaded", "filename": CSV_FILENAME}
+        logger.info("[Bar] 🔄 Limpando cache...")
+        bq_client.clear_cache('bar_zig')
+        cache.clear()
+        logger.info("[Bar] ✅ Cache limpo")
+        return {"status": "cache_cleared", "table": "bar_zig"}
     except Exception as e:
-        logger.error(f"[Bar] ❌ Erro ao recarregar CSV: {e}")
+        logger.error(f"[Bar] ❌ Erro ao limpar cache: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/cache-info")
 async def get_cache_info():
     """Retorna informações de cache"""
-    return csv_loader.get_cache_info(CSV_FILENAME)
+    return bq_client.get_cache_info()
