@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Filters } from '../../components/Filters'
 import type { FilterValues } from '../../components/Filters'
 import { WaveLoader } from '../../components/WaveLoader'
+import { getApiUrl } from '../../lib/api'
 
 // Lazy load das abas para melhor performance
 const Resultados = lazy(() => import('./ResultadosNew').then(m => ({ default: m.ResultadosNew })))
@@ -29,7 +30,7 @@ const fetchBaseGeral = async (): Promise<BaseGeralRow[]> => {
   console.time('[Visão Geral] Fetch total')
   console.time('[Visão Geral] Network request')
 
-  const response = await fetch('/api/sheets')
+  const response = await fetch(getApiUrl('api/sheets'))
   console.timeEnd('[Visão Geral] Network request')
 
   if (!response.ok) throw new Error('Falha ao carregar dados')

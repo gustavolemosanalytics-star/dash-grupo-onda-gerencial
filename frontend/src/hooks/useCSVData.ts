@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { dbCache, STORES } from '../lib/indexedDBCache'
+import { getApiUrl } from '../lib/api'
 
 type DataType = 'bar' | 'vendas'
 
@@ -25,14 +26,14 @@ interface UseCSVDataReturn<T> {
 
 const ENDPOINTS = {
   bar: {
-    csv: '/api/csv/bar-zig',
-    metadata: '/api/csv/bar-zig/metadata',
+    csv: getApiUrl('api/csv/bar-zig'),
+    metadata: getApiUrl('api/csv/bar-zig/metadata'),
     store: STORES.BAR_ZIG,
     cacheKey: 'bar_zig_metadata',
   },
   vendas: {
-    csv: '/api/csv/vendas-ingresso',
-    metadata: '/api/csv/vendas-ingresso/metadata',
+    csv: getApiUrl('api/csv/vendas-ingresso'),
+    metadata: getApiUrl('api/csv/vendas-ingresso/metadata'),
     store: STORES.VENDAS_INGRESSO,
     cacheKey: 'vendas_ingresso_metadata',
   },

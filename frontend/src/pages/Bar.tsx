@@ -6,6 +6,7 @@ import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
 import { formatCurrency, formatNumber } from '../lib/formatters'
+import { getApiUrl } from '../lib/api'
 import zigLogo from '../assets/zig_logo.png'
 
 // Tipos para dados agregados
@@ -59,37 +60,37 @@ const buildQueryString = (params: Record<string, string>) => {
 }
 
 const fetchMetrics = async (filters: Record<string, string>): Promise<BarMetrics> => {
-  const response = await fetch('/api/bar-aggregated/metrics' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/bar-aggregated/metrics') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar métricas')
   return response.json()
 }
 
 const fetchSalesByDate = async (filters: Record<string, string>): Promise<SalesByDate[]> => {
-  const response = await fetch('/api/bar-aggregated/sales-by-date' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/bar-aggregated/sales-by-date') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar vendas por data')
   return response.json()
 }
 
 const fetchTopProducts = async (filters: Record<string, string>): Promise<TopProduct[]> => {
-  const response = await fetch('/api/bar-aggregated/top-products?limit=5' + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
+  const response = await fetch(getApiUrl('api/bar-aggregated/top-products?limit=5') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
   if (!response.ok) throw new Error('Falha ao carregar top produtos')
   return response.json()
 }
 
 const fetchByCategory = async (filters: Record<string, string>): Promise<CategoryData[]> => {
-  const response = await fetch('/api/bar-aggregated/by-category' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/bar-aggregated/by-category') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar categorias')
   return response.json()
 }
 
 const fetchRecentTransactions = async (filters: Record<string, string>): Promise<RecentTransaction[]> => {
-  const response = await fetch('/api/bar-aggregated/recent-transactions?limit=20' + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
+  const response = await fetch(getApiUrl('api/bar-aggregated/recent-transactions?limit=20') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
   if (!response.ok) throw new Error('Falha ao carregar transações')
   return response.json()
 }
 
 const fetchFilters = async (filters: Record<string, string>): Promise<Filters> => {
-  const response = await fetch('/api/bar-aggregated/filters' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/bar-aggregated/filters') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar filtros')
   return response.json()
 }

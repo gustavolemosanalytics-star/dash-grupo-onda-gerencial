@@ -7,6 +7,7 @@ import { ChartCard } from '../features/dashboard/components/ChartCard'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
 import { formatCurrency, formatNumber, formatCompact } from '../lib/formatters'
+import { getApiUrl } from '../lib/api'
 import logoVendas from '../assets/logo_vendas.png'
 
 // Tipos para dados agregados
@@ -61,37 +62,37 @@ const buildQueryString = (params: Record<string, string>) => {
 }
 
 const fetchMetrics = async (filters: Record<string, string>): Promise<VendasMetrics> => {
-  const response = await fetch('/api/vendas-aggregated/metrics' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/vendas-aggregated/metrics') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar métricas')
   return response.json()
 }
 
 const fetchByEvent = async (filters: Record<string, string>): Promise<EventData[]> => {
-  const response = await fetch('/api/vendas-aggregated/by-event?limit=10' + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
+  const response = await fetch(getApiUrl('api/vendas-aggregated/by-event?limit=10') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
   if (!response.ok) throw new Error('Falha ao carregar eventos')
   return response.json()
 }
 
 const fetchByChannel = async (filters: Record<string, string>): Promise<ChannelData[]> => {
-  const response = await fetch('/api/vendas-aggregated/by-channel' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/vendas-aggregated/by-channel') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar canais')
   return response.json()
 }
 
 const fetchByType = async (filters: Record<string, string>): Promise<TypeData[]> => {
-  const response = await fetch('/api/vendas-aggregated/by-type' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/vendas-aggregated/by-type') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar tipos')
   return response.json()
 }
 
 const fetchRecentSales = async (filters: Record<string, string>): Promise<RecentSale[]> => {
-  const response = await fetch('/api/vendas-aggregated/recent-sales?limit=10' + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
+  const response = await fetch(getApiUrl('api/vendas-aggregated/recent-sales?limit=10') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
   if (!response.ok) throw new Error('Falha ao carregar vendas recentes')
   return response.json()
 }
 
 const fetchFilters = async (filters: Record<string, string>): Promise<FilterOptions> => {
-  const response = await fetch('/api/vendas-aggregated/filters' + buildQueryString(filters))
+  const response = await fetch(getApiUrl('api/vendas-aggregated/filters') + buildQueryString(filters))
   if (!response.ok) throw new Error('Falha ao carregar filtros')
   return response.json()
 }
