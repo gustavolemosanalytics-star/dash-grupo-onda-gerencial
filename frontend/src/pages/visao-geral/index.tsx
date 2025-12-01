@@ -30,7 +30,7 @@ const fetchBaseGeral = async (): Promise<BaseGeralRow[]> => {
   console.time('[Visão Geral] Fetch total')
   console.time('[Visão Geral] Network request')
 
-  const response = await fetch(getApiUrl('api/sheets'))
+  const response = await fetch(getApiUrl('api/sheets/'))
   console.timeEnd('[Visão Geral] Network request')
 
   if (!response.ok) throw new Error('Falha ao carregar dados')
