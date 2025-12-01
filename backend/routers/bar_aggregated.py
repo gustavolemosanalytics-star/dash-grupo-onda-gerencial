@@ -1,79 +1,31 @@
 """
-Endpoints agregados para Bar - processa CSV no backend
+Endpoints agregados para Bar - consulta BigQuery
 Retorna apenas dados sumarizados necessários para o dashboard
+OTIMIZADO: Usa agregação SQL no BigQuery em vez de carregar tudo na memória
 """
 from fastapi import APIRouter, HTTPException, Query
-from pathlib import Path
-import pandas as pd
 import logging
 from typing import List, Dict, Any, Optional
 from cache import cache
+from bigquery_client import bq_client
 
 router = APIRouter(prefix="/bar-aggregated", tags=["Bar Aggregated"])
 logger = logging.getLogger(__name__)
 
-CSV_DIR = Path(__file__).parent.parent / "data"
-CSV_PATH = CSV_DIR / "bar_zig.csv"
 
-
-def load_bar_data() -> pd.DataFrame:
-    """Carrega dados do CSV com cache"""
-    cache_key = "bar_dataframe"
-
-    cached = cache.get(cache_key)
-    if cached is not None:
-        logger.info(f"[Bar Aggregated] Usando cache ({len(cached)} linhas)")
-        return cached
-
-    logger.info("[Bar Aggregated] Carregando CSV...")
-
-    # Carregar colunas necessárias incluindo campos de filtro
-    df = pd.read_csv(
-        CSV_PATH,
-        usecols=[
-            'transactionId', 'transactionDate', 'productName',
-            'productCategory', 'count', 'unitValue', 'discountValue',
-            'eventName', 'eventDate', 'employeeName', '_evento_tipo'
-        ],
-        dtype={
-            'transactionId': 'str',
-            'productName': 'str',
-            'productCategory': 'str',
-            'eventName': 'str',
-            'employeeName': 'str',
-            '_evento_tipo': 'str',
-        },
-        parse_dates=['transactionDate', 'eventDate']
-    )
-
-    # Substituir NaN por valores padrão e converter centavos para reais
-    df['unitValue'] = pd.to_numeric(df['unitValue'], errors='coerce').fillna(0) / 100
-    df['discountValue'] = pd.to_numeric(df['discountValue'], errors='coerce').fillna(0) / 100
-    df['count'] = pd.to_numeric(df['count'], errors='coerce').fillna(1)
-
-    # Cache por 30 minutos
-    cache.set(cache_key, df, ttl_minutes=30)
-
-    logger.info(f"[Bar Aggregated] Carregado {len(df)} linhas")
-    return df
-
-
-def apply_filters(df: pd.DataFrame, evento_tipo: Optional[str] = None,
-                  event_name: Optional[str] = None, event_date: Optional[str] = None) -> pd.DataFrame:
-    """Aplica filtros ao dataframe"""
-    filtered_df = df.copy()
+def build_where_clause(evento_tipo: Optional[str] = None, event_name: Optional[str] = None,
+                       event_date: Optional[str] = None) -> str:
+    """Constrói cláusula WHERE baseada nos filtros"""
+    conditions = ["isRefunded = FALSE"]  # Sempre filtrar refunded
 
     if evento_tipo:
-        filtered_df = filtered_df[filtered_df['_evento_tipo'] == evento_tipo]
-
+        conditions.append(f"_evento_tipo = '{evento_tipo}'")
     if event_name:
-        filtered_df = filtered_df[filtered_df['eventName'] == event_name]
-
+        conditions.append(f"eventName = '{event_name}'")
     if event_date:
-        # Converter string para datetime e comparar apenas a data
-        filtered_df = filtered_df[filtered_df['eventDate'].dt.strftime('%Y-%m-%d') == event_date]
+        conditions.append(f"FORMAT_DATE('%Y-%m-%d', eventDate) = '{event_date}'")
 
-    return filtered_df
+    return " AND ".join(conditions)
 
 
 @router.get("/metrics")
@@ -84,18 +36,49 @@ async def get_metrics(
 ):
     """Retorna métricas principais do bar com filtros opcionais"""
     try:
-        df = load_bar_data()
-        df = apply_filters(df, evento_tipo, event_name, event_date)
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
 
-        # Calcular receita
-        df['revenue'] = (df['unitValue'] * df['count']) - df['discountValue']
+        cache_key = f"bar_metrics_{hash(where_clause)}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
 
-        return {
-            "total_transactions": int(len(df)),
-            "total_revenue": float(df['revenue'].sum()),
-            "total_products_sold": int(df['count'].sum()),
-            "avg_ticket": float(df['revenue'].sum() / len(df)) if len(df) > 0 else 0
+        # Valores já estão em centavos no BigQuery, precisamos dividir por 100
+        sql = f"""
+        SELECT
+            COUNT(*) as total_transactions,
+            SUM((unitValue * count - IFNULL(discountValue, 0)) / 100) as total_revenue,
+            SUM(count) as total_products_sold
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        """
+
+        result = bq_client.query(sql)
+        if not result:
+            return {
+                "total_transactions": 0,
+                "total_revenue": 0,
+                "total_products_sold": 0,
+                "avg_ticket": 0
+            }
+
+        row = result[0]
+        total_transactions = int(row.get('total_transactions', 0) or 0)
+        total_revenue = float(row.get('total_revenue', 0) or 0)
+        total_products_sold = int(row.get('total_products_sold', 0) or 0)
+        avg_ticket = total_revenue / total_transactions if total_transactions > 0 else 0
+
+        response = {
+            "total_transactions": total_transactions,
+            "total_revenue": total_revenue,
+            "total_products_sold": total_products_sold,
+            "avg_ticket": avg_ticket
         }
+
+        cache.set(cache_key, response, ttl_minutes=15)
+        return response
+
     except Exception as e:
         logger.error(f"[Bar Metrics] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -109,24 +92,22 @@ async def get_sales_by_date(
 ):
     """Retorna vendas agregadas por data com filtros opcionais"""
     try:
-        df = load_bar_data()
-        df = apply_filters(df, evento_tipo, event_name, event_date)
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
 
-        df['revenue'] = (df['unitValue'] * df['count']) - df['discountValue']
-        df['date'] = df['transactionDate'].dt.date
+        sql = f"""
+        SELECT
+            FORMAT_DATE('%Y-%m-%d', transactionDate) as date,
+            SUM((unitValue * count - IFNULL(discountValue, 0)) / 100) as revenue,
+            SUM(count) as count
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        GROUP BY date
+        ORDER BY date
+        """
 
-        grouped = df.groupby('date').agg({
-            'revenue': 'sum',
-            'count': 'sum'
-        }).reset_index()
+        return bq_client.query(sql)
 
-        # Ordenar por data
-        grouped = grouped.sort_values('date')
-
-        # Formatar datas
-        grouped['date'] = grouped['date'].astype(str)
-
-        return grouped.to_dict('records')
     except Exception as e:
         logger.error(f"[Bar Sales By Date] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -141,27 +122,23 @@ async def get_top_products(
 ):
     """Retorna top produtos por faturamento com filtros opcionais"""
     try:
-        df = load_bar_data()
-        df = apply_filters(df, evento_tipo, event_name, event_date)
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
 
-        df['revenue'] = (df['unitValue'] * df['count']) - df['discountValue']
+        sql = f"""
+        SELECT
+            productName as name,
+            SUM((unitValue * count - IFNULL(discountValue, 0)) / 100) as revenue,
+            SUM(count) as quantity
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        GROUP BY productName
+        ORDER BY revenue DESC
+        LIMIT {limit}
+        """
 
-        grouped = df.groupby('productName').agg({
-            'revenue': 'sum',
-            'count': 'sum'
-        }).reset_index()
+        return bq_client.query(sql)
 
-        # Ordenar e limitar
-        top = grouped.nlargest(limit, 'revenue')
-
-        return [
-            {
-                "name": row['productName'],
-                "revenue": float(row['revenue']),
-                "quantity": int(row['count'])
-            }
-            for _, row in top.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Bar Top Products] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -175,26 +152,21 @@ async def get_by_category(
 ):
     """Retorna vendas por categoria com filtros opcionais"""
     try:
-        df = load_bar_data()
-        df = apply_filters(df, evento_tipo, event_name, event_date)
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
 
-        df['revenue'] = (df['unitValue'] * df['count']) - df['discountValue']
-        df['productCategory'] = df['productCategory'].fillna('Sem categoria')
+        sql = f"""
+        SELECT
+            IFNULL(productCategory, 'Sem categoria') as name,
+            SUM((unitValue * count - IFNULL(discountValue, 0)) / 100) as revenue
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        GROUP BY productCategory
+        ORDER BY revenue DESC
+        """
 
-        grouped = df.groupby('productCategory').agg({
-            'revenue': 'sum'
-        }).reset_index()
+        return bq_client.query(sql)
 
-        # Ordenar por receita
-        grouped = grouped.sort_values('revenue', ascending=False)
-
-        return [
-            {
-                "name": row['productCategory'],
-                "revenue": float(row['revenue'])
-            }
-            for _, row in grouped.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Bar By Category] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -209,32 +181,28 @@ async def get_recent_transactions(
 ):
     """Retorna transações mais recentes com filtros opcionais"""
     try:
-        df = load_bar_data()
-        df = apply_filters(df, evento_tipo, event_name, event_date)
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
 
-        # Ordenar por data (mais recentes primeiro)
-        df = df.sort_values('transactionDate', ascending=False)
+        sql = f"""
+        SELECT
+            transactionId as id,
+            FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%S', transactionDate) as transactionDate,
+            productName,
+            productCategory,
+            eventName,
+            count,
+            unitValue / 100 as unitValue,
+            IFNULL(discountValue, 0) / 100 as discountValue,
+            ((unitValue * count - IFNULL(discountValue, 0)) / 100) as total
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        ORDER BY transactionDate DESC
+        LIMIT {limit}
+        """
 
-        # Pegar as primeiras N
-        recent = df.head(limit)
+        return bq_client.query(sql)
 
-        # Calcular total
-        recent['total'] = (recent['unitValue'] * recent['count']) - recent['discountValue']
-
-        return [
-            {
-                "id": row['transactionId'],
-                "transactionDate": row['transactionDate'].isoformat() if pd.notna(row['transactionDate']) else None,
-                "productName": row['productName'],
-                "productCategory": row['productCategory'],
-                "eventName": row['eventName'],
-                "count": int(row['count']),
-                "unitValue": float(row['unitValue']),
-                "discountValue": float(row['discountValue']),
-                "total": float(row['total'])
-            }
-            for _, row in recent.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Bar Recent] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -248,24 +216,41 @@ async def get_filters(
 ):
     """Retorna opções de filtros disponíveis (filtros dinâmicos baseados em outros filtros ativos)"""
     try:
-        df = load_bar_data()
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
 
-        # Aplicar filtros para obter opções dinâmicas
-        df = apply_filters(df, evento_tipo, event_name, event_date)
+        cache_key = f"bar_filters_{hash(where_clause)}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
 
-        # Extrair valores únicos para cada filtro
-        tipos = sorted(df['_evento_tipo'].dropna().unique().tolist())
-        events = sorted(df['eventName'].dropna().unique().tolist())
+        sql = f"""
+        SELECT
+            ARRAY_AGG(DISTINCT _evento_tipo IGNORE NULLS ORDER BY _evento_tipo) as tipos,
+            ARRAY_AGG(DISTINCT eventName IGNORE NULLS ORDER BY eventName) as events,
+            ARRAY_AGG(DISTINCT FORMAT_DATE('%d/%m/%Y', eventDate) IGNORE NULLS ORDER BY eventDate DESC) as event_dates
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        """
 
-        # Para datas, converter para formato dd/mm/yyyy
-        event_dates = df['eventDate'].dropna().dt.strftime('%d/%m/%Y').unique().tolist()
-        event_dates = sorted(set(event_dates))
+        result = bq_client.query(sql)
+        if not result:
+            response = {
+                "tipos": [],
+                "events": [],
+                "event_dates": []
+            }
+        else:
+            row = result[0]
+            response = {
+                "tipos": row.get('tipos', []) or [],
+                "events": row.get('events', []) or [],
+                "event_dates": row.get('event_dates', []) or []
+            }
 
-        return {
-            "tipos": tipos,
-            "events": events,
-            "event_dates": event_dates
-        }
+        cache.set(cache_key, response, ttl_minutes=15)
+        return response
+
     except Exception as e:
         logger.error(f"[Bar Filters] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))

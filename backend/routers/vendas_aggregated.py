@@ -1,9 +1,9 @@
 """
 Endpoints agregados para Vendas de Ingresso - consulta BigQuery
 Retorna apenas dados sumarizados necessários para o dashboard
+OTIMIZADO: Usa agregação SQL no BigQuery em vez de carregar tudo na memória
 """
 from fastapi import APIRouter, HTTPException, Query
-import pandas as pd
 import logging
 from typing import List, Dict, Any, Optional
 from cache import cache
@@ -13,68 +13,24 @@ router = APIRouter(prefix="/vendas-aggregated", tags=["Vendas Aggregated"])
 logger = logging.getLogger(__name__)
 
 
-def load_vendas_data() -> pd.DataFrame:
-    """Carrega dados do BigQuery com cache"""
-    cache_key = "vendas_dataframe"
+def build_where_clause(cidade: Optional[str] = None, evento: Optional[str] = None,
+                       base_responsavel: Optional[str] = None, ticketeira: Optional[str] = None,
+                       data_evento: Optional[str] = None) -> str:
+    """Constrói cláusula WHERE baseada nos filtros"""
+    conditions = []
 
-    cached = cache.get(cache_key)
-    if cached is not None:
-        logger.info(f"[Vendas Aggregated] Usando cache ({len(cached)} linhas)")
-        return cached
+    if cidade:
+        conditions.append(f"cidade_evento = '{cidade}'")
+    if evento:
+        conditions.append(f"evento = '{evento}'")
+    if base_responsavel:
+        conditions.append(f"base_responsavel = '{base_responsavel}'")
+    if ticketeira:
+        conditions.append(f"ticketeira = '{ticketeira}'")
+    if data_evento:
+        conditions.append(f"FORMAT_DATE('%Y-%m-%d', data_evento) = '{data_evento}'")
 
-    logger.info("[Vendas Aggregated] Carregando do BigQuery...")
-
-    # Buscar dados do BigQuery
-    data = bq_client.get_vendas_ingresso()
-
-    if not data:
-        logger.warning("[Vendas Aggregated] Nenhum dado retornado do BigQuery")
-        return pd.DataFrame()
-
-    # Converter para DataFrame
-    df = pd.DataFrame(data)
-
-    # Converter tipos
-    if 'data_evento' in df.columns:
-        df['data_evento'] = pd.to_datetime(df['data_evento'], errors='coerce')
-    if 'data_venda' in df.columns:
-        df['data_venda'] = pd.to_datetime(df['data_venda'], errors='coerce')
-
-    df['valor_liquido'] = pd.to_numeric(df['valor_liquido'], errors='coerce').fillna(0)
-    df['valor_bruto'] = pd.to_numeric(df['valor_bruto'], errors='coerce').fillna(0)
-    df['valor_desconto'] = pd.to_numeric(df['valor_desconto'], errors='coerce').fillna(0)
-    df['quantidade'] = pd.to_numeric(df['quantidade'], errors='coerce').fillna(1)
-
-    # Cache por 15 minutos
-    cache.set(cache_key, df, ttl_minutes=15)
-
-    logger.info(f"[Vendas Aggregated] Carregado {len(df)} linhas do BigQuery")
-    return df
-
-
-def apply_filters(df: pd.DataFrame, cidade: Optional[str] = None, evento: Optional[str] = None,
-                  base_responsavel: Optional[str] = None, ticketeira: Optional[str] = None,
-                  data_evento: Optional[str] = None) -> pd.DataFrame:
-    """Aplica filtros ao dataframe"""
-    filtered_df = df.copy()
-
-    if cidade and 'cidade_evento' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['cidade_evento'] == cidade]
-
-    if evento and 'evento' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['evento'] == evento]
-
-    if base_responsavel and 'base_responsavel' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['base_responsavel'] == base_responsavel]
-
-    if ticketeira and 'ticketeira' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['ticketeira'] == ticketeira]
-
-    if data_evento and 'data_evento' in filtered_df.columns:
-        # Converter string para datetime e comparar apenas a data
-        filtered_df = filtered_df[filtered_df['data_evento'].dt.strftime('%Y-%m-%d') == data_evento]
-
-    return filtered_df
+    return " AND " + " AND ".join(conditions) if conditions else ""
 
 
 @router.get("/metrics")
@@ -87,8 +43,25 @@ async def get_metrics(
 ):
     """Retorna métricas principais de vendas com filtros opcionais"""
     try:
-        df = load_vendas_data()
-        if df.empty:
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
+
+        cache_key = f"vendas_metrics_{hash(where_clause)}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
+        sql = f"""
+        SELECT
+            COUNT(*) as total_vendas,
+            SUM(CAST(quantidade AS FLOAT64)) as total_ingressos,
+            SUM(CAST(valor_liquido AS FLOAT64)) as total_receita
+        FROM `{table_ref}`
+        WHERE 1=1 {where_clause}
+        """
+
+        result = bq_client.query(sql)
+        if not result:
             return {
                 "total_vendas": 0,
                 "total_ingressos": 0,
@@ -96,18 +69,21 @@ async def get_metrics(
                 "ticket_medio": 0
             }
 
-        df = apply_filters(df, cidade, evento, base_responsavel, ticketeira, data_evento)
+        row = result[0]
+        total_ingressos = int(row.get('total_ingressos', 0) or 0)
+        total_receita = float(row.get('total_receita', 0) or 0)
+        ticket_medio = total_receita / total_ingressos if total_ingressos > 0 else 0
 
-        total_ingressos = int(df['quantidade'].sum())
-        total_receita = float(df['valor_liquido'].sum())
-        ticket_medio = float(total_receita / total_ingressos) if total_ingressos > 0 else 0
-
-        return {
-            "total_vendas": int(len(df)),
+        response = {
+            "total_vendas": int(row.get('total_vendas', 0) or 0),
             "total_ingressos": total_ingressos,
             "total_receita": total_receita,
             "ticket_medio": ticket_medio
         }
+
+        cache.set(cache_key, response, ttl_minutes=15)
+        return response
+
     except Exception as e:
         logger.error(f"[Vendas Metrics] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -124,28 +100,23 @@ async def get_by_event(
 ):
     """Retorna vendas por evento (top N) com filtros opcionais"""
     try:
-        df = load_vendas_data()
-        if df.empty or 'evento' not in df.columns:
-            return []
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
 
-        df = apply_filters(df, cidade, evento, base_responsavel, ticketeira, data_evento)
+        sql = f"""
+        SELECT
+            evento as name,
+            SUM(CAST(valor_liquido AS FLOAT64)) as Receita,
+            SUM(CAST(quantidade AS FLOAT64)) as Ingressos
+        FROM `{table_ref}`
+        WHERE evento IS NOT NULL {where_clause}
+        GROUP BY evento
+        ORDER BY Receita DESC
+        LIMIT {limit}
+        """
 
-        grouped = df.groupby('evento').agg({
-            'quantidade': 'sum',
-            'valor_liquido': 'sum'
-        }).reset_index()
+        return bq_client.query(sql)
 
-        # Ordenar por receita
-        top = grouped.nlargest(limit, 'valor_liquido')
-
-        return [
-            {
-                "name": row['evento'],
-                "Receita": float(row['valor_liquido']),
-                "Ingressos": int(row['quantidade'])
-            }
-            for _, row in top.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Vendas By Event] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -161,30 +132,22 @@ async def get_by_channel(
 ):
     """Retorna vendas por canal (ticketeira) com filtros opcionais"""
     try:
-        df = load_vendas_data()
-        if df.empty or 'ticketeira' not in df.columns:
-            return []
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
 
-        df = apply_filters(df, cidade, evento, base_responsavel, ticketeira, data_evento)
+        sql = f"""
+        SELECT
+            IFNULL(ticketeira, 'Não especificado') as label,
+            SUM(CAST(valor_liquido AS FLOAT64)) as value,
+            SUM(CAST(quantidade AS FLOAT64)) as quantity
+        FROM `{table_ref}`
+        WHERE 1=1 {where_clause}
+        GROUP BY ticketeira
+        ORDER BY value DESC
+        """
 
-        df['ticketeira'] = df['ticketeira'].fillna('Não especificado')
+        return bq_client.query(sql)
 
-        grouped = df.groupby('ticketeira').agg({
-            'quantidade': 'sum',
-            'valor_liquido': 'sum'
-        }).reset_index()
-
-        # Ordenar por receita
-        grouped = grouped.sort_values('valor_liquido', ascending=False)
-
-        return [
-            {
-                "label": row['ticketeira'],
-                "value": float(row['valor_liquido']),
-                "quantity": int(row['quantidade'])
-            }
-            for _, row in grouped.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Vendas By Channel] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -200,28 +163,21 @@ async def get_by_type(
 ):
     """Retorna vendas por tipo de ingresso com filtros opcionais"""
     try:
-        df = load_vendas_data()
-        if df.empty or 'tipo' not in df.columns:
-            return []
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
 
-        df = apply_filters(df, cidade, evento, base_responsavel, ticketeira, data_evento)
+        sql = f"""
+        SELECT
+            IFNULL(tipo, 'Não especificado') as name,
+            SUM(CAST(valor_liquido AS FLOAT64)) as value
+        FROM `{table_ref}`
+        WHERE 1=1 {where_clause}
+        GROUP BY tipo
+        ORDER BY value DESC
+        """
 
-        df['tipo'] = df['tipo'].fillna('Não especificado')
+        return bq_client.query(sql)
 
-        grouped = df.groupby('tipo').agg({
-            'valor_liquido': 'sum'
-        }).reset_index()
-
-        # Ordenar por receita
-        grouped = grouped.sort_values('valor_liquido', ascending=False)
-
-        return [
-            {
-                "name": row['tipo'],
-                "value": float(row['valor_liquido'])
-            }
-            for _, row in grouped.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Vendas By Type] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -238,31 +194,27 @@ async def get_recent_sales(
 ):
     """Retorna vendas mais recentes com filtros opcionais"""
     try:
-        df = load_vendas_data()
-        if df.empty or 'data_venda' not in df.columns:
-            return []
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
 
-        df = apply_filters(df, cidade, evento, base_responsavel, ticketeira, data_evento)
+        sql = f"""
+        SELECT
+            CAST(id AS STRING) as id,
+            evento,
+            tipo,
+            ticketeira,
+            CAST(quantidade AS INT64) as quantidade,
+            CAST(valor_liquido AS FLOAT64) / CAST(quantidade AS FLOAT64) as valor_unitario,
+            CAST(valor_liquido AS FLOAT64) as valor_liquido,
+            status
+        FROM `{table_ref}`
+        WHERE data_venda IS NOT NULL {where_clause}
+        ORDER BY data_venda DESC
+        LIMIT {limit}
+        """
 
-        # Ordenar por data de venda (mais recentes primeiro)
-        df = df.sort_values('data_venda', ascending=False)
+        return bq_client.query(sql)
 
-        # Pegar as primeiras N
-        recent = df.head(limit)
-
-        return [
-            {
-                "id": str(row['id']) if 'id' in row else '',
-                "evento": row['evento'] if 'evento' in row else '',
-                "tipo": row['tipo'] if 'tipo' in row else '',
-                "ticketeira": row['ticketeira'] if 'ticketeira' in row else '',
-                "quantidade": int(row['quantidade']),
-                "valor_unitario": float(row['valor_liquido'] / row['quantidade']) if row['quantidade'] > 0 else 0,
-                "valor_liquido": float(row['valor_liquido']),
-                "status": row['status'] if 'status' in row else ''
-            }
-            for _, row in recent.iterrows()
-        ]
     except Exception as e:
         logger.error(f"[Vendas Recent] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -278,38 +230,48 @@ async def get_filters(
 ):
     """Retorna opções de filtros disponíveis (filtros dinâmicos baseados em outros filtros ativos)"""
     try:
-        df = load_vendas_data()
-        if df.empty:
-            return {
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
+
+        cache_key = f"vendas_filters_{hash(where_clause)}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
+        # Query para pegar todos os valores únicos de uma vez
+        sql = f"""
+        SELECT
+            ARRAY_AGG(DISTINCT cidade_evento IGNORE NULLS ORDER BY cidade_evento) as cidades,
+            ARRAY_AGG(DISTINCT evento IGNORE NULLS ORDER BY evento) as eventos,
+            ARRAY_AGG(DISTINCT base_responsavel IGNORE NULLS ORDER BY base_responsavel) as bases,
+            ARRAY_AGG(DISTINCT ticketeira IGNORE NULLS ORDER BY ticketeira) as ticketeiras,
+            ARRAY_AGG(DISTINCT FORMAT_DATE('%d/%m/%Y', data_evento) IGNORE NULLS ORDER BY data_evento DESC) as datas_evento
+        FROM `{table_ref}`
+        WHERE 1=1 {where_clause}
+        """
+
+        result = bq_client.query(sql)
+        if not result:
+            response = {
                 "cidades": [],
                 "eventos": [],
                 "bases": [],
                 "ticketeiras": [],
                 "datas_evento": []
             }
+        else:
+            row = result[0]
+            response = {
+                "cidades": row.get('cidades', []) or [],
+                "eventos": row.get('eventos', []) or [],
+                "bases": row.get('bases', []) or [],
+                "ticketeiras": row.get('ticketeiras', []) or [],
+                "datas_evento": row.get('datas_evento', []) or []
+            }
 
-        # Aplicar filtros para obter opções dinâmicas
-        df = apply_filters(df, cidade, evento, base_responsavel, ticketeira, data_evento)
+        cache.set(cache_key, response, ttl_minutes=15)
+        return response
 
-        # Extrair valores únicos para cada filtro
-        cidades = sorted(df['cidade_evento'].dropna().unique().tolist()) if 'cidade_evento' in df.columns else []
-        eventos = sorted(df['evento'].dropna().unique().tolist()) if 'evento' in df.columns else []
-        bases = sorted(df['base_responsavel'].dropna().unique().tolist()) if 'base_responsavel' in df.columns else []
-        ticketeiras = sorted(df['ticketeira'].dropna().unique().tolist()) if 'ticketeira' in df.columns else []
-
-        # Para datas, converter para formato dd/mm/yyyy
-        datas_evento = []
-        if 'data_evento' in df.columns:
-            datas_evento = df['data_evento'].dropna().dt.strftime('%d/%m/%Y').unique().tolist()
-            datas_evento = sorted(set(datas_evento))
-
-        return {
-            "cidades": cidades,
-            "eventos": eventos,
-            "bases": bases,
-            "ticketeiras": ticketeiras,
-            "datas_evento": datas_evento
-        }
     except Exception as e:
         logger.error(f"[Vendas Filters] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
