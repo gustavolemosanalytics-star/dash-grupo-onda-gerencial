@@ -224,29 +224,45 @@ async def get_filters(
         if cached:
             return cached
 
-        sql = f"""
-        SELECT
-            ARRAY_AGG(DISTINCT _evento_tipo IGNORE NULLS ORDER BY _evento_tipo) as tipos,
-            ARRAY_AGG(DISTINCT eventName IGNORE NULLS ORDER BY eventName) as events,
-            ARRAY_AGG(DISTINCT FORMAT_DATE('%d/%m/%Y', eventDate) IGNORE NULLS ORDER BY eventDate DESC) as event_dates
-        FROM `{table_ref}`
-        WHERE {where_clause}
-        """
+        # Executar queries separadas para cada filtro (ARRAY_AGG não funciona bem com o client)
+        response = {
+            "tipos": [],
+            "events": [],
+            "event_dates": []
+        }
 
-        result = bq_client.query(sql)
-        if not result:
-            response = {
-                "tipos": [],
-                "events": [],
-                "event_dates": []
-            }
-        else:
-            row = result[0]
-            response = {
-                "tipos": row.get('tipos', []) or [],
-                "events": row.get('events', []) or [],
-                "event_dates": row.get('event_dates', []) or []
-            }
+        # Tipos de Evento
+        sql_tipos = f"""
+        SELECT DISTINCT _evento_tipo
+        FROM `{table_ref}`
+        WHERE _evento_tipo IS NOT NULL AND {where_clause}
+        ORDER BY _evento_tipo
+        LIMIT 1000
+        """
+        tipos_result = bq_client.query(sql_tipos)
+        response["tipos"] = [row['_evento_tipo'] for row in tipos_result if row.get('_evento_tipo')]
+
+        # Event Names
+        sql_events = f"""
+        SELECT DISTINCT eventName
+        FROM `{table_ref}`
+        WHERE eventName IS NOT NULL AND {where_clause}
+        ORDER BY eventName
+        LIMIT 1000
+        """
+        events_result = bq_client.query(sql_events)
+        response["events"] = [row['eventName'] for row in events_result if row.get('eventName')]
+
+        # Event Dates - retorna direto o valor da coluna
+        sql_dates = f"""
+        SELECT DISTINCT FORMAT_DATE('%Y-%m-%d', DATE(eventDate)) as data_formatada
+        FROM `{table_ref}`
+        WHERE eventDate IS NOT NULL AND {where_clause}
+        ORDER BY data_formatada DESC
+        LIMIT 1000
+        """
+        dates_result = bq_client.query(sql_dates)
+        response["event_dates"] = [row['data_formatada'] for row in dates_result if row.get('data_formatada') and row['data_formatada'].strip()]
 
         cache.set(cache_key, response, ttl_minutes=15)
         return response

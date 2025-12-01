@@ -238,36 +238,69 @@ async def get_filters(
         if cached:
             return cached
 
-        # Query para pegar todos os valores únicos de uma vez
-        sql = f"""
-        SELECT
-            ARRAY_AGG(DISTINCT cidade_evento IGNORE NULLS ORDER BY cidade_evento) as cidades,
-            ARRAY_AGG(DISTINCT evento IGNORE NULLS ORDER BY evento) as eventos,
-            ARRAY_AGG(DISTINCT base_responsavel IGNORE NULLS ORDER BY base_responsavel) as bases,
-            ARRAY_AGG(DISTINCT ticketeira IGNORE NULLS ORDER BY ticketeira) as ticketeiras,
-            ARRAY_AGG(DISTINCT FORMAT_DATE('%d/%m/%Y', data_evento) IGNORE NULLS ORDER BY data_evento DESC) as datas_evento
-        FROM `{table_ref}`
-        WHERE 1=1 {where_clause}
-        """
+        # Executar queries separadas para cada filtro (ARRAY_AGG não funciona bem com o client)
+        response = {
+            "cidades": [],
+            "eventos": [],
+            "bases": [],
+            "ticketeiras": [],
+            "datas_evento": []
+        }
 
-        result = bq_client.query(sql)
-        if not result:
-            response = {
-                "cidades": [],
-                "eventos": [],
-                "bases": [],
-                "ticketeiras": [],
-                "datas_evento": []
-            }
-        else:
-            row = result[0]
-            response = {
-                "cidades": row.get('cidades', []) or [],
-                "eventos": row.get('eventos', []) or [],
-                "bases": row.get('bases', []) or [],
-                "ticketeiras": row.get('ticketeiras', []) or [],
-                "datas_evento": row.get('datas_evento', []) or []
-            }
+        # Cidades
+        sql_cidades = f"""
+        SELECT DISTINCT cidade_evento
+        FROM `{table_ref}`
+        WHERE cidade_evento IS NOT NULL {where_clause}
+        ORDER BY cidade_evento
+        LIMIT 1000
+        """
+        cidades_result = bq_client.query(sql_cidades)
+        response["cidades"] = [row['cidade_evento'] for row in cidades_result if row.get('cidade_evento')]
+
+        # Eventos
+        sql_eventos = f"""
+        SELECT DISTINCT evento
+        FROM `{table_ref}`
+        WHERE evento IS NOT NULL {where_clause}
+        ORDER BY evento
+        LIMIT 1000
+        """
+        eventos_result = bq_client.query(sql_eventos)
+        response["eventos"] = [row['evento'] for row in eventos_result if row.get('evento')]
+
+        # Bases
+        sql_bases = f"""
+        SELECT DISTINCT base_responsavel
+        FROM `{table_ref}`
+        WHERE base_responsavel IS NOT NULL {where_clause}
+        ORDER BY base_responsavel
+        LIMIT 1000
+        """
+        bases_result = bq_client.query(sql_bases)
+        response["bases"] = [row['base_responsavel'] for row in bases_result if row.get('base_responsavel')]
+
+        # Ticketeiras
+        sql_ticketeiras = f"""
+        SELECT DISTINCT ticketeira
+        FROM `{table_ref}`
+        WHERE ticketeira IS NOT NULL {where_clause}
+        ORDER BY ticketeira
+        LIMIT 1000
+        """
+        ticketeiras_result = bq_client.query(sql_ticketeiras)
+        response["ticketeiras"] = [row['ticketeira'] for row in ticketeiras_result if row.get('ticketeira')]
+
+        # Datas - retorna direto o valor da coluna
+        sql_datas = f"""
+        SELECT DISTINCT CAST(data_evento AS STRING) as data_formatada
+        FROM `{table_ref}`
+        WHERE data_evento IS NOT NULL {where_clause}
+        ORDER BY data_formatada DESC
+        LIMIT 1000
+        """
+        datas_result = bq_client.query(sql_datas)
+        response["datas_evento"] = [row['data_formatada'] for row in datas_result if row.get('data_formatada') and row['data_formatada'].strip()]
 
         cache.set(cache_key, response, ttl_minutes=15)
         return response

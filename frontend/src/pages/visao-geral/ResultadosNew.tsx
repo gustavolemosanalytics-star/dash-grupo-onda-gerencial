@@ -15,7 +15,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { MetricCard } from '../../features/dashboard/components/MetricCard'
 import { formatCurrency, formatCompact } from '../../lib/formatters'
 import { parseCurrency } from '../../lib/parsers'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, XCircle, Calendar, Clock } from 'lucide-react'
 
 interface BaseGeralRow {
   [key: string]: unknown
@@ -239,6 +239,41 @@ export function ResultadosNew({ data }: ResultadosProps) {
       .slice(0, 20)
   }, [data])
 
+  // Próximos Eventos - eventos com data futura
+  const proximosEventos = useMemo(() => {
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+
+    return data
+      .filter((row) => {
+        const dataEvento = row['Data']
+        if (!dataEvento) return false
+        const dataObj = new Date(String(dataEvento))
+        return dataObj >= hoje
+      })
+      .map((row) => {
+        const dataEvento = new Date(String(row['Data']))
+        const diffTime = dataEvento.getTime() - hoje.getTime()
+        const diasFaltando = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        return {
+          evento: String(row['Evento'] || ''),
+          cidade: String(row['Cidade do Evento'] || ''),
+          data: dataEvento,
+          dataFormatada: dataEvento.toLocaleDateString('pt-BR'),
+          diasFaltando,
+          base: String(row['Base'] || ''),
+          lider: String(row['Líder do Evento'] || row['Lider do Evento'] || ''),
+        }
+      })
+      .filter((item) => item.evento)
+      .sort((a, b) => a.data.getTime() - b.data.getTime())
+      .filter((item, index, self) =>
+        index === self.findIndex((t) => t.evento === item.evento && t.dataFormatada === item.dataFormatada)
+      )
+      .slice(0, 12)
+  }, [data])
+
   const getMetaStatus = (status: string) => {
     const normalized = status.toLowerCase()
     if (normalized.includes('sim') || normalized === 's') {
@@ -303,6 +338,67 @@ export function ResultadosNew({ data }: ResultadosProps) {
           helper="Resultado para o Grupo Onda"
         />
       </section>
+
+      {/* PRÓXIMOS EVENTOS */}
+      {proximosEventos.length > 0 && (
+        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center gap-2">
+            <Calendar className="text-onda-orange" size={24} />
+            <h3 className="text-lg font-bold text-gray-900">Próximos Eventos</h3>
+            <span className="ml-2 rounded-full bg-onda-orange px-2 py-0.5 text-xs font-bold text-white">
+              {proximosEventos.length}
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {proximosEventos.map((item, index) => {
+              const isUrgent = item.diasFaltando <= 7
+              const isToday = item.diasFaltando === 0
+
+              return (
+                <div
+                  key={index}
+                  className={`rounded-xl border-2 p-4 transition hover:shadow-md ${
+                    isToday
+                      ? 'border-red-300 bg-red-50'
+                      : isUrgent
+                      ? 'border-orange-300 bg-orange-50'
+                      : 'border-blue-200 bg-blue-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate" title={item.evento}>
+                        {item.evento}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600 truncate" title={item.cidade}>
+                        {item.cidade}
+                      </p>
+                      <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                        <Calendar size={12} />
+                        <span>{item.dataFormatada}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <div
+                        className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
+                          isToday
+                            ? 'bg-red-500 text-white'
+                            : isUrgent
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-blue-500 text-white'
+                        }`}
+                      >
+                        <Clock size={12} />
+                        {isToday ? 'HOJE' : `${item.diasFaltando}d`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* GRÁFICO 1: Evento por Receitas atuais - Valor Total vs Despesa Total + Lucro */}
       <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
