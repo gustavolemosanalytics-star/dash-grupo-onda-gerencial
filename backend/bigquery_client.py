@@ -100,85 +100,149 @@ class BigQueryClient:
         table_ref = self._get_table_ref('planejamento')
 
         sql = f"""
-        SELECT
-            data AS `Data`,
-            dia_da_semana AS `Dia da Semana`,
-            base AS `Base`,
-            atividade AS `Atividade`,
-            evento AS `Evento`,
-            status_das_atracoes AS `Status das Atrações`,
-            lider_do_evento AS `Líder do Evento`,
-            cidade_do_evento AS `Cidade do Evento`,
-            estado AS `Estado`,
-            socios_no_evento AS `Sócios no Evento`,
-            local_do_evento AS `Local do Evento`,
-            ticketeira AS `Ticketeira`,
-            adm_tickeira_onda AS `Adm Tickeira Onda`,
-            atracoes AS `Atrações`,
-            pct_grupo_onda AS `% Grupo Onda`,
-            meta_grupo_onda AS `Meta Grupo Onda`,
-            evento_realizado AS `Evento Realizado`,
-            pct_patrocinio AS `% Patrocínio`,
-            publico_estimado AS `Público Estimado`,
-            ingressos_emitidos AS `Ingressos Emitidos`,
-            ingressos_validados AS `Ingressos Validados`,
-            no_show AS `No Show`,
-            cortesias_emitidas AS `Cortesias Emitidas`,
-            ingressos_permuta AS `Ingressos Permuta`,
-            prestadores_de_servico AS `Prestadores de serviço`,
-            feedback_dos_clientes AS `Feedback dos Clientes`,
-            destaques AS `Destaques`,
-            quantidade_de_leads_captado AS `Quantidade de Leads Captado`,
-            engajamento AS `Engajamento`,
-            taxa_de_conversao AS `Taxa de Conversão`,
-            roi_marketing AS `ROI Marketing`,
-            custo_por_participante AS `Custo por Participante`,
-            projecao_de_receitas_bilheteria AS `Projeção de Receitas - Bilheteria`,
-            projecao_de_receitas_bar AS `Projeção de Receitas - Bar`,
-            projecao_de_receitas_alimentacao AS `Projeção de Receitas - Alimentação`,
-            projecao_de_receitas_patrocinios AS `Projeção de Receitas - Patrocínios`,
-            projecao_de_receitas_loja AS `Projeção de Receitas - Loja`,
-            projecao_de_receitas_outros AS `Projeção de Receitas - Outros`,
-            receitas_atuais_bilheteria AS `Receitas atuais - Bilheteria`,
-            receitas_atuais_bar AS `Receitas atuais - Bar`,
-            receitas_atuais_alimentacao AS `Receitas atuais - Alimentação`,
-            receitas_atuais_patrocinios AS `Receitas atuais - Patrocínios`,
-            receitas_atuais_loja AS `Receitas atuais - Loja`,
-            receitas_atuais_outros AS `Receitas atuais - Outros`,
-            projecao_de_despesas AS `Projeção de Despesas`,
-            despesas_atuais_artistico_logistica AS `Despesas atuais - Artístico e Logística`,
-            despesas_atuais_licenca_impostos AS `Despesas atuais - Licença e Impostos`,
-            despesas_atuais_locacao AS `Despesas atuais - Locação`,
-            despesas_atuais_projeto AS `Despesas atuais - Projeto`,
-            despesas_atuais_infraestrutura AS `Despesas atuais - Infraestrutura`,
-            despesas_atuais_cenografia_decoracao AS `Despesas atuais - Cenografia e Decoração`,
-            despesas_atuais_tecnologia AS `Despesas atuais - Tecnologia`,
-            despesas_atuais_marketing_midias_gerais AS `Despesas atuais - Marketing e Mídias Gerais`,
-            despesas_atuais_operacional AS `Despesas atuais - Operacional`,
-            despesas_atuais_aeb AS `Despesas atuais - AEB`,
-            despesas_atuais_diversos AS `Despesas atuais - Diversos`,
-            projecao_de_receitas_valor_total AS `Projeção de Receitas - Valor Total`,
-            projecao_margem_de_lucro AS `Projeção - Margem de Lucro`,
-            receitas_atuais_valor_total AS `Receitas atuais - Valor Total`,
-            despesa_total AS `Despesa Total `,
-            lucro_receitas_atuais_despesas_atuais AS `Lucro (Receitas atuais - Despesas atuais)`,
-            ticket_medio_bilheteria_e_aeb AS `Ticket Médio (Bilheteria e AEB)`,
-            gap_diferenca_entre_previsao_e_real AS `GAP (Diferença entre previsão e real)`,
-            roi_lucro_receita AS `ROI (Lucro / Receita)`,
-            resultado_grupo_onda AS `Resultado Grupo Onda`,
-            resultado_socio_local_label AS `Resultado Sócio Local Label`,
-            resultado_socio_dono_label AS `Resultado Sócio Dono Label`,
-            meta_atingida AS `Meta Atingida`,
-            links_planilhas AS `Links Planilhas`,
-            qual_zig AS `Qual ZIG`,
-            detalhamento_aeb_no_drive AS `Detalhamento AEB no Drive`,
-            roi AS `ROI`,
-            projecao_de_despesas AS `Projeção de Despesas - Total`
+        SELECT *
         FROM `{table_ref}`
         ORDER BY data DESC
         """
 
-        return self.query(sql, cache_key='planejamento')
+        raw_data = self.query(sql, cache_key='planejamento')
+
+        # Mapeamento de nomes de campos para o formato que o frontend espera
+        field_mapping = {
+            'data': 'Data',
+            'dia_da_semana': 'Dia da Semana',
+            'base': 'Base',
+            'atividade': 'Atividade',
+            'evento': 'Evento',
+            'status_das_atracoes': 'Status das Atrações',
+            'lider_do_evento': 'Líder do Evento',
+            'cidade_do_evento': 'Cidade do Evento',
+            'estado': 'Estado',
+            'socios_no_evento': 'Sócios no Evento',
+            'local_do_evento': 'Local do Evento',
+            'ticketeira': 'Ticketeira',
+            'adm_tickeira_onda': 'Adm Tickeira Onda',
+            'atracoes': 'Atrações',
+            'pct_grupo_onda': '% Grupo Onda',
+            'meta_grupo_onda': 'Meta Grupo Onda',
+            'evento_realizado': 'Evento Realizado',
+            'pct_patrocinio': '% Patrocínio',
+            'publico_estimado': 'Público Estimado',
+            'ingressos_emitidos': 'Ingressos Emitidos',
+            'ingressos_validados': 'Ingressos Validados',
+            'no_show': 'No Show',
+            'cortesias_emitidas': 'Cortesias Emitidas',
+            'ingressos_permuta': 'Ingressos Permuta',
+            'prestadores_de_servico': 'Prestadores de serviço',
+            'feedback_dos_clientes': 'Feedback dos Clientes',
+            'destaques': 'Destaques',
+            'quantidade_de_leads_captado': 'Quantidade de Leads Captado',
+            'engajamento': 'Engajamento',
+            'taxa_de_conversao': 'Taxa de Conversão',
+            'roi_marketing': 'ROI Marketing',
+            'custo_por_participante': 'Custo por Participante',
+            'projecao_de_receitas_bilheteria': 'Projeção de Receitas - Bilheteria',
+            'projecao_de_receitas_bar': 'Projeção de Receitas - Bar',
+            'projecao_de_receitas_alimentacao': 'Projeção de Receitas - Alimentação',
+            'projecao_de_receitas_patrocinios': 'Projeção de Receitas - Patrocínios',
+            'projecao_de_receitas_loja': 'Projeção de Receitas - Loja',
+            'projecao_de_receitas_outros': 'Projeção de Receitas - Outros',
+            'receitas_atuais_bilheteria': 'Receitas atuais - Bilheteria',
+            'receitas_atuais_bar': 'Receitas atuais - Bar',
+            'receitas_atuais_alimentacao': 'Receitas atuais - Alimentação',
+            'receitas_atuais_patrocinios': 'Receitas atuais - Patrocínios',
+            'receitas_atuais_loja': 'Receitas atuais - Loja',
+            'receitas_atuais_outros': 'Receitas atuais - Outros',
+            'despesas_atuais_artistico_logistica': 'Despesas atuais - Artístico e Logística',
+            'despesas_atuais_licenca_impostos': 'Despesas atuais - Licença e Impostos',
+            'despesas_atuais_locacao': 'Despesas atuais - Locação',
+            'despesas_atuais_projeto': 'Despesas atuais - Projeto',
+            'despesas_atuais_infraestrutura': 'Despesas atuais - Infraestrutura',
+            'despesas_atuais_cenografia_decoracao': 'Despesas atuais - Cenografia e Decoração',
+            'despesas_atuais_tecnologia': 'Despesas atuais - Tecnologia',
+            'despesas_atuais_marketing_midias_gerais': 'Despesas atuais - Marketing e Mídias Gerais',
+            'despesas_atuais_operacional': 'Despesas atuais - Operacional',
+            'despesas_atuais_aeb': 'Despesas atuais - AEB',
+            'despesas_atuais_diversos': 'Despesas atuais - Diversos',
+            'projecao_de_receitas_valor_total': 'Projeção de Receitas - Valor Total',
+            'projecao_margem_de_lucro': 'Projeção - Margem de Lucro',
+            'receitas_atuais_valor_total': 'Receitas atuais - Valor Total',
+            'despesa_total': 'Despesa Total ',
+            'lucro_receitas_atuais_despesas_atuais': 'Lucro (Receitas atuais - Despesas atuais)',
+            'ticket_medio_bilheteria_e_aeb': 'Ticket Médio (Bilheteria e AEB)',
+            'gap_diferenca_entre_previsao_e_real': 'GAP (Diferença entre previsão e real)',
+            'roi_lucro_receita': 'ROI (Lucro / Receita)',
+            'resultado_grupo_onda': 'Resultado Grupo Onda',
+            'resultado_socio_local_label': 'Resultado Sócio Local Label',
+            'resultado_socio_dono_label': 'Resultado Sócio Dono Label',
+            'meta_atingida': 'Meta Atingida',
+            'links_planilhas': 'Links Planilhas',
+            'qual_zig': 'Qual ZIG',
+            'detalhamento_aeb_no_drive': 'Detalhamento AEB no Drive',
+            'roi': 'ROI',
+            'projecao_de_despesas': 'Projeção de Despesas - Total',
+        }
+
+        # Campos que devem ser convertidos para números
+        numeric_fields = {
+            'publico_estimado', 'ingressos_emitidos', 'ingressos_validados', 'no_show',
+            'cortesias_emitidas', 'ingressos_permuta', 'quantidade_de_leads_captado',
+            'taxa_de_conversao', 'custo_por_participante',
+            'projecao_de_receitas_bilheteria', 'projecao_de_receitas_bar',
+            'projecao_de_receitas_alimentacao', 'projecao_de_receitas_patrocinios',
+            'projecao_de_receitas_loja', 'projecao_de_receitas_outros',
+            'receitas_atuais_bilheteria', 'receitas_atuais_bar',
+            'receitas_atuais_alimentacao', 'receitas_atuais_patrocinios',
+            'receitas_atuais_loja', 'receitas_atuais_outros',
+            'projecao_de_despesas',
+            'despesas_atuais_artistico_logistica', 'despesas_atuais_licenca_impostos',
+            'despesas_atuais_locacao', 'despesas_atuais_projeto',
+            'despesas_atuais_infraestrutura', 'despesas_atuais_cenografia_decoracao',
+            'despesas_atuais_tecnologia', 'despesas_atuais_marketing_midias_gerais',
+            'despesas_atuais_operacional', 'despesas_atuais_aeb', 'despesas_atuais_diversos',
+            'projecao_de_receitas_valor_total', 'projecao_margem_de_lucro',
+            'receitas_atuais_valor_total', 'despesa_total',
+            'lucro_receitas_atuais_despesas_atuais', 'ticket_medio_bilheteria_e_aeb',
+            'gap_diferenca_entre_previsao_e_real', 'roi_lucro_receita',
+            'resultado_grupo_onda', 'resultado_socio_local_label', 'resultado_socio_dono_label',
+        }
+
+        def convert_to_number(value: str) -> float:
+            """Converte string para número, tratando diferentes formatos"""
+            if not value or value == '':
+                return 0.0
+            # Remove espaços
+            value = value.strip()
+            # Remove R$ e outros símbolos
+            value = value.replace('R$', '').replace('$', '')
+            # Remove separadores de milhar
+            value = value.replace('.', '')  # 1.000 -> 1000
+            # Converte vírgula para ponto decimal
+            value = value.replace(',', '.')  # 1,50 -> 1.50
+            # Remove espaços novamente
+            value = value.strip()
+            # Remove % se houver
+            value = value.replace('%', '')
+
+            try:
+                return float(value)
+            except (ValueError, AttributeError):
+                return 0.0
+
+        # Mapear os campos para os nomes esperados pelo frontend
+        mapped_data = []
+        for row in raw_data:
+            mapped_row = {}
+            for old_key, new_key in field_mapping.items():
+                if old_key in row:
+                    value = row[old_key]
+                    # Converter campos numéricos
+                    if old_key in numeric_fields and isinstance(value, str):
+                        value = convert_to_number(value)
+                    mapped_row[new_key] = value
+            mapped_data.append(mapped_row)
+
+        return mapped_data
 
     def get_bar_zig(self, limit: int = None) -> List[Dict[str, Any]]:
         """
