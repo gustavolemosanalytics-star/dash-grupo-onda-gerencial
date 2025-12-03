@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { RefreshCcw, Calendar, Clock, X, Ticket, TrendingUp, Users } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
-import { ChartCard } from '../features/dashboard/components/ChartCard'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
 import { formatCurrency, formatNumber, formatCompact } from '../lib/formatters'
@@ -428,58 +427,64 @@ export function VendasIngresso() {
         {/* Gráficos de análise */}
         <section className="grid gap-6 lg:grid-cols-2">
           {/* Vendas por evento */}
-          <ChartCard
-            title="Vendas por Evento"
-            subtitle="Top 10 eventos por receita"
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={eventData} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                <XAxis dataKey="name" stroke="#94a3b8" angle={-45} textAnchor="end" height={100} interval={0} tick={{ fontSize: 11 }} />
-                <YAxis stroke="#94a3b8" tickFormatter={(value) => formatCompact(value)} />
-                <Tooltip
-                  contentStyle={{
-                    background: '#030712',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number, name: string) =>
-                    name === 'Receita' ? formatCurrency(value) : formatNumber(value)
-                  }
-                />
-                <Legend />
-                <Bar dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="Ingressos" fill="#34d399" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Vendas por Evento</h3>
+              <p className="text-sm text-gray-600">Top 10 eventos por receita</p>
+            </div>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={eventData} margin={{ top: 10, right: 30, left: 0, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis dataKey="name" stroke="#6B7280" angle={-45} textAnchor="end" height={60} interval={0} tick={{ fontSize: 10 }} />
+                  <YAxis stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#FFFFFF',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value: number, name: string) =>
+                      name === 'Receita' ? formatCurrency(value) : formatNumber(value)
+                    }
+                  />
+                  <Legend />
+                  <Bar dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="Ingressos" fill="#34d399" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
           {/* Receita por Tipo de Ingresso - Barras Horizontais */}
-          <ChartCard
-            title="Receita por Tipo de Ingresso"
-            subtitle="Distribuição por categoria"
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={typeData}
-                layout="vertical"
-                margin={{ top: 10, right: 30, left: 80, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                <XAxis type="number" stroke="#94a3b8" tickFormatter={(value) => formatCompact(value)} />
-                <YAxis type="category" dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} width={75} />
-                <Tooltip
-                  contentStyle={{
-                    background: '#030712',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number) => formatCurrency(value)}
-                />
-                <Bar dataKey="value" name="Receita" fill="#a78bfa" radius={[0, 8, 8, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Receita por Tipo de Ingresso</h3>
+              <p className="text-sm text-gray-600">Distribuição por categoria</p>
+            </div>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={typeData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 30, left: 100, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis type="number" stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                  <YAxis type="category" dataKey="name" stroke="#6B7280" tick={{ fontSize: 11 }} width={95} />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#FFFFFF',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
+                  <Bar dataKey="value" name="Receita" fill="#a78bfa" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </section>
 
         {/* Vendas por Canal - Gráfico de Barras */}
