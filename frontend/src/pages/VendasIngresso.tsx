@@ -424,6 +424,73 @@ export function VendasIngresso() {
           </div>
         </section>
 
+        {/* Próximos Eventos - Logo após métricas */}
+        {processedUpcomingEvents.length > 0 && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Calendar className="text-onda-orange" size={24} />
+              <h3 className="text-lg font-semibold text-gray-900">Eventos a Serem Realizados</h3>
+              <span className="ml-2 rounded-full bg-onda-orange px-2 py-0.5 text-xs font-bold text-white">
+                {processedUpcomingEvents.length}
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {processedUpcomingEvents.map((item, index) => {
+                const isUrgent = item.diasFaltando <= 7
+                const isToday = item.diasFaltando === 0
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedEvent(item.evento)}
+                    className={`rounded-xl border-2 p-4 text-left transition hover:shadow-md ${
+                      isToday
+                        ? 'border-red-300 bg-red-50 hover:bg-red-100'
+                        : isUrgent
+                        ? 'border-orange-300 bg-orange-50 hover:bg-orange-100'
+                        : 'border-blue-200 bg-blue-50 hover:bg-blue-100'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate" title={item.evento}>
+                          {item.evento}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-600 truncate" title={item.cidade}>
+                          {item.cidade}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                          <Calendar size={12} />
+                          <span>{item.dataFormatada}</span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-600">
+                          <span>{formatNumber(item.total_ingressos)} ingressos</span>
+                          <span>•</span>
+                          <span className="font-semibold text-emerald-600">{formatCurrency(item.faturamento)}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <div
+                          className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
+                            isToday
+                              ? 'bg-red-500 text-white'
+                              : isUrgent
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-blue-500 text-white'
+                          }`}
+                        >
+                          <Clock size={12} />
+                          {isToday ? 'HOJE' : `${item.diasFaltando}d`}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Gráficos de análise */}
         <section className="grid gap-6 lg:grid-cols-2">
           {/* Vendas por evento */}
@@ -642,73 +709,6 @@ export function VendasIngresso() {
             </table>
           </div>
         </section>
-
-        {/* Próximos Eventos */}
-        {processedUpcomingEvents.length > 0 && (
-          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <Calendar className="text-onda-orange" size={24} />
-              <h3 className="text-lg font-semibold text-gray-900">Eventos a Serem Realizados</h3>
-              <span className="ml-2 rounded-full bg-onda-orange px-2 py-0.5 text-xs font-bold text-white">
-                {processedUpcomingEvents.length}
-              </span>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {processedUpcomingEvents.map((item, index) => {
-                const isUrgent = item.diasFaltando <= 7
-                const isToday = item.diasFaltando === 0
-
-                return (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedEvent(item.evento)}
-                    className={`rounded-xl border-2 p-4 text-left transition hover:shadow-md ${
-                      isToday
-                        ? 'border-red-300 bg-red-50 hover:bg-red-100'
-                        : isUrgent
-                        ? 'border-orange-300 bg-orange-50 hover:bg-orange-100'
-                        : 'border-blue-200 bg-blue-50 hover:bg-blue-100'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate" title={item.evento}>
-                          {item.evento}
-                        </p>
-                        <p className="mt-1 text-xs text-gray-600 truncate" title={item.cidade}>
-                          {item.cidade}
-                        </p>
-                        <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
-                          <Calendar size={12} />
-                          <span>{item.dataFormatada}</span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-600">
-                          <span>{formatNumber(item.total_ingressos)} ingressos</span>
-                          <span>•</span>
-                          <span className="font-semibold text-emerald-600">{formatCurrency(item.faturamento)}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <div
-                          className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
-                            isToday
-                              ? 'bg-red-500 text-white'
-                              : isUrgent
-                              ? 'bg-orange-500 text-white'
-                              : 'bg-blue-500 text-white'
-                          }`}
-                        >
-                          <Clock size={12} />
-                          {isToday ? 'HOJE' : `${item.diasFaltando}d`}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        )}
 
         {/* Modal de Detalhes do Evento */}
         {selectedEvent && (
