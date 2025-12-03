@@ -308,3 +308,187 @@ async def get_filters(
     except Exception as e:
         logger.error(f"[Vendas Filters] Erro: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/upcoming-events")
+async def get_upcoming_events():
+    """Retorna eventos futuros com métricas de vendas"""
+    try:
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+
+        cache_key = "vendas_upcoming_events"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
+        # Query para buscar eventos futuros com métricas agregadas
+        sql = f"""
+        SELECT
+            evento,
+            cidade_evento,
+            FORMAT_DATE('%Y-%m-%d', data_evento) as data_evento_fmt,
+            data_evento,
+            COUNT(*) as total_vendas,
+            SUM(quantidade) as total_ingressos,
+            SUM(valor_liquido) as faturamento_total,
+            SUM(CASE WHEN valor_liquido > 0 THEN valor_liquido ELSE 0 END) as receita_liquida,
+            COUNT(DISTINCT ticketeira) as qtd_ticketeiras
+        FROM `{table_ref}`
+        WHERE data_evento >= CURRENT_DATE()
+          AND evento IS NOT NULL
+        GROUP BY evento, cidade_evento, data_evento
+        ORDER BY data_evento ASC
+        LIMIT 50
+        """
+
+        result = bq_client.query(sql)
+
+        events = []
+        for row in result:
+            evento = row.get('evento')
+            if not evento:
+                continue
+
+            events.append({
+                "evento": evento,
+                "cidade": row.get('cidade_evento') or '',
+                "data_evento": row.get('data_evento_fmt'),
+                "total_vendas": int(row.get('total_vendas') or 0),
+                "total_ingressos": int(row.get('total_ingressos') or 0),
+                "faturamento": float(row.get('faturamento_total') or 0),
+                "receita_liquida": float(row.get('receita_liquida') or 0),
+            })
+
+        cache.set(cache_key, events, ttl_minutes=15)
+        return events
+
+    except Exception as e:
+        logger.error(f"[Vendas Upcoming Events] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/event-details/{evento}")
+async def get_event_details(evento: str):
+    """Retorna detalhes completos de um evento específico"""
+    try:
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+
+        cache_key = f"vendas_event_details_{hash(evento)}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
+        # Query para métricas gerais do evento
+        sql_metrics = f"""
+        SELECT
+            evento,
+            cidade_evento,
+            FORMAT_DATE('%Y-%m-%d', data_evento) as data_evento_fmt,
+            COUNT(*) as total_vendas,
+            SUM(quantidade) as total_ingressos,
+            SUM(valor_liquido) as faturamento_total,
+            SUM(valor_bruto) as valor_bruto_total,
+            SUM(valor_desconto) as desconto_total,
+            AVG(valor_liquido / NULLIF(quantidade, 0)) as ticket_medio
+        FROM `{table_ref}`
+        WHERE evento = '{evento}'
+        GROUP BY evento, cidade_evento, data_evento
+        LIMIT 1
+        """
+
+        metrics_result = bq_client.query(sql_metrics)
+        if not metrics_result:
+            raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+        metrics = metrics_result[0]
+
+        # Query para vendas por tipo de ingresso
+        sql_tipos = f"""
+        SELECT
+            COALESCE(tipo, 'Não especificado') as tipo,
+            SUM(quantidade) as quantidade,
+            SUM(valor_liquido) as valor_total
+        FROM `{table_ref}`
+        WHERE evento = '{evento}'
+        GROUP BY tipo
+        ORDER BY quantidade DESC
+        """
+
+        tipos_result = bq_client.query(sql_tipos)
+        tipos = [
+            {
+                "tipo": row.get('tipo') or 'Não especificado',
+                "quantidade": int(row.get('quantidade') or 0),
+                "valor": float(row.get('valor_total') or 0)
+            }
+            for row in tipos_result
+        ]
+
+        # Query para vendas dos últimos 7 dias
+        sql_semana = f"""
+        SELECT
+            FORMAT_DATE('%Y-%m-%d', created_at) as data,
+            SUM(quantidade) as quantidade,
+            SUM(valor_liquido) as valor
+        FROM `{table_ref}`
+        WHERE evento = '{evento}'
+          AND created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        GROUP BY data
+        ORDER BY data ASC
+        """
+
+        semana_result = bq_client.query(sql_semana)
+        vendas_semana = [
+            {
+                "data": row.get('data'),
+                "quantidade": int(row.get('quantidade') or 0),
+                "valor": float(row.get('valor') or 0)
+            }
+            for row in semana_result
+        ]
+
+        # Query para vendas por ticketeira
+        sql_ticketeiras = f"""
+        SELECT
+            COALESCE(ticketeira, 'Não especificada') as ticketeira,
+            SUM(quantidade) as quantidade,
+            SUM(valor_liquido) as valor
+        FROM `{table_ref}`
+        WHERE evento = '{evento}'
+        GROUP BY ticketeira
+        ORDER BY quantidade DESC
+        """
+
+        ticketeiras_result = bq_client.query(sql_ticketeiras)
+        ticketeiras = [
+            {
+                "ticketeira": row.get('ticketeira') or 'Não especificada',
+                "quantidade": int(row.get('quantidade') or 0),
+                "valor": float(row.get('valor') or 0)
+            }
+            for row in ticketeiras_result
+        ]
+
+        response = {
+            "evento": metrics.get('evento'),
+            "cidade": metrics.get('cidade_evento') or '',
+            "data_evento": metrics.get('data_evento_fmt'),
+            "total_vendas": int(metrics.get('total_vendas') or 0),
+            "total_ingressos": int(metrics.get('total_ingressos') or 0),
+            "faturamento": float(metrics.get('faturamento_total') or 0),
+            "valor_bruto": float(metrics.get('valor_bruto_total') or 0),
+            "desconto_total": float(metrics.get('desconto_total') or 0),
+            "ticket_medio": float(metrics.get('ticket_medio') or 0),
+            "tipos_ingresso": tipos,
+            "vendas_semana": vendas_semana,
+            "ticketeiras": ticketeiras
+        }
+
+        cache.set(cache_key, response, ttl_minutes=10)
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Vendas Event Details] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

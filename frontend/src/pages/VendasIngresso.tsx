@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { RefreshCcw } from 'lucide-react'
+import { RefreshCcw, Calendar, Clock, X, Ticket, TrendingUp, Users } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Pie, PieChart, Cell } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { ChartCard } from '../features/dashboard/components/ChartCard'
@@ -54,6 +54,50 @@ interface FilterOptions {
   datas_evento: string[]
 }
 
+// Tipos para eventos futuros
+interface UpcomingEvent {
+  evento: string
+  cidade: string
+  data_evento: string
+  total_vendas: number
+  total_ingressos: number
+  faturamento: number
+  receita_liquida: number
+}
+
+interface TipoIngresso {
+  tipo: string
+  quantidade: number
+  valor: number
+}
+
+interface VendaSemana {
+  data: string
+  quantidade: number
+  valor: number
+}
+
+interface TicketeiraVenda {
+  ticketeira: string
+  quantidade: number
+  valor: number
+}
+
+interface EventDetails {
+  evento: string
+  cidade: string
+  data_evento: string
+  total_vendas: number
+  total_ingressos: number
+  faturamento: number
+  valor_bruto: number
+  desconto_total: number
+  ticket_medio: number
+  tipos_ingresso: TipoIngresso[]
+  vendas_semana: VendaSemana[]
+  ticketeiras: TicketeiraVenda[]
+}
+
 // Funções de fetch
 const buildQueryString = (params: Record<string, string>) => {
   const filtered = Object.entries(params).filter(([_, v]) => v !== '')
@@ -97,6 +141,18 @@ const fetchFilters = async (filters: Record<string, string>): Promise<FilterOpti
   return response.json()
 }
 
+const fetchUpcomingEvents = async (): Promise<UpcomingEvent[]> => {
+  const response = await fetch(getApiUrl('api/vendas-aggregated/upcoming-events'))
+  if (!response.ok) throw new Error('Falha ao carregar eventos futuros')
+  return response.json()
+}
+
+const fetchEventDetails = async (evento: string): Promise<EventDetails> => {
+  const response = await fetch(getApiUrl(`api/vendas-aggregated/event-details/${encodeURIComponent(evento)}`))
+  if (!response.ok) throw new Error('Falha ao carregar detalhes do evento')
+  return response.json()
+}
+
 const LoadingState = () => (
   <div className="flex min-h-[60vh] items-center justify-center">
     <div className="text-center">
@@ -136,6 +192,9 @@ export function VendasIngresso() {
   const [baseResponsavel, setBaseResponsavel] = useState('')
   const [ticketeira, setTicketeira] = useState('')
   const [dataEvento, setDataEvento] = useState('')
+
+  // Estado para popup de detalhes do evento
+  const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   // Montar objeto de filtros para as queries
   const filterParams = useMemo(() => ({
@@ -183,6 +242,42 @@ export function VendasIngresso() {
     queryFn: () => fetchRecentSales(filterParams),
     staleTime: 1000 * 60 * 5,
   })
+
+  // Query para eventos futuros
+  const { data: upcomingEvents } = useQuery({
+    queryKey: ['vendasUpcomingEvents'],
+    queryFn: fetchUpcomingEvents,
+    staleTime: 1000 * 60 * 15, // 15 minutos
+  })
+
+  // Query para detalhes do evento selecionado
+  const { data: eventDetails, isLoading: eventDetailsLoading } = useQuery({
+    queryKey: ['vendasEventDetails', selectedEvent],
+    queryFn: () => fetchEventDetails(selectedEvent!),
+    enabled: !!selectedEvent,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  // Processar eventos futuros com dias restantes
+  const processedUpcomingEvents = useMemo(() => {
+    if (!upcomingEvents) return []
+
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+
+    return upcomingEvents.map(event => {
+      const eventDate = new Date(event.data_evento + 'T00:00:00')
+      const diffTime = eventDate.getTime() - hoje.getTime()
+      const diasFaltando = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      return {
+        ...event,
+        eventDate,
+        dataFormatada: eventDate.toLocaleDateString('pt-BR'),
+        diasFaltando
+      }
+    }).filter(e => e.diasFaltando >= 0)
+  }, [upcomingEvents])
 
   const isLoading = metricsLoading || eventsLoading || channelsLoading || typesLoading || salesLoading
   const isError = !metrics && !metricsLoading
@@ -434,6 +529,222 @@ export function VendasIngresso() {
             </table>
           </div>
         </section>
+
+        {/* Próximos Eventos */}
+        {processedUpcomingEvents.length > 0 && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Calendar className="text-onda-orange" size={24} />
+              <h3 className="text-lg font-semibold text-gray-900">Eventos a Serem Realizados</h3>
+              <span className="ml-2 rounded-full bg-onda-orange px-2 py-0.5 text-xs font-bold text-white">
+                {processedUpcomingEvents.length}
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {processedUpcomingEvents.map((item, index) => {
+                const isUrgent = item.diasFaltando <= 7
+                const isToday = item.diasFaltando === 0
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedEvent(item.evento)}
+                    className={`rounded-xl border-2 p-4 text-left transition hover:shadow-md ${
+                      isToday
+                        ? 'border-red-300 bg-red-50 hover:bg-red-100'
+                        : isUrgent
+                        ? 'border-orange-300 bg-orange-50 hover:bg-orange-100'
+                        : 'border-blue-200 bg-blue-50 hover:bg-blue-100'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate" title={item.evento}>
+                          {item.evento}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-600 truncate" title={item.cidade}>
+                          {item.cidade}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                          <Calendar size={12} />
+                          <span>{item.dataFormatada}</span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-600">
+                          <span>{formatNumber(item.total_ingressos)} ingressos</span>
+                          <span>•</span>
+                          <span className="font-semibold text-emerald-600">{formatCurrency(item.faturamento)}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <div
+                          className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
+                            isToday
+                              ? 'bg-red-500 text-white'
+                              : isUrgent
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-blue-500 text-white'
+                          }`}
+                        >
+                          <Clock size={12} />
+                          {isToday ? 'HOJE' : `${item.diasFaltando}d`}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Modal de Detalhes do Evento */}
+        {selectedEvent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+              <button
+                onClick={() => setSelectedEvent(null)}
+                className="absolute right-4 top-4 rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={24} />
+              </button>
+
+              {eventDetailsLoading ? (
+                <div className="flex h-64 items-center justify-center">
+                  <WaveLoader />
+                </div>
+              ) : eventDetails ? (
+                <div className="space-y-6">
+                  {/* Header do evento */}
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">{eventDetails.evento}</h2>
+                    <p className="mt-1 text-gray-600">{eventDetails.cidade}</p>
+                    <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                      <Calendar size={16} />
+                      <span>{new Date(eventDetails.data_evento + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                      <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                        {(() => {
+                          const hoje = new Date()
+                          hoje.setHours(0, 0, 0, 0)
+                          const eventDate = new Date(eventDetails.data_evento + 'T00:00:00')
+                          const dias = Math.ceil((eventDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
+                          return dias === 0 ? 'HOJE' : dias === 1 ? 'Amanhã' : `${dias} dias`
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Métricas principais */}
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+                      <div className="flex items-center gap-2 text-blue-600">
+                        <Ticket size={18} />
+                        <span className="text-sm font-medium">Ingressos Vendidos</span>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatNumber(eventDetails.total_ingressos)}</p>
+                    </div>
+                    <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-4">
+                      <div className="flex items-center gap-2 text-emerald-600">
+                        <TrendingUp size={18} />
+                        <span className="text-sm font-medium">Faturamento</span>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(eventDetails.faturamento)}</p>
+                    </div>
+                    <div className="rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 p-4">
+                      <div className="flex items-center gap-2 text-purple-600">
+                        <Users size={18} />
+                        <span className="text-sm font-medium">Total de Vendas</span>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatNumber(eventDetails.total_vendas)}</p>
+                    </div>
+                    <div className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 p-4">
+                      <div className="flex items-center gap-2 text-orange-600">
+                        <TrendingUp size={18} />
+                        <span className="text-sm font-medium">Ticket Médio</span>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(eventDetails.ticket_medio)}</p>
+                    </div>
+                  </div>
+
+                  {/* Tipos de Ingresso */}
+                  {eventDetails.tipos_ingresso && eventDetails.tipos_ingresso.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-lg font-semibold text-gray-900">Por Tipo de Ingresso</h3>
+                      <div className="rounded-xl border border-gray-200 overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-semibold text-gray-600">Tipo</th>
+                              <th className="px-4 py-3 text-center font-semibold text-gray-600">Quantidade</th>
+                              <th className="px-4 py-3 text-right font-semibold text-gray-600">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eventDetails.tipos_ingresso.map((tipo, idx) => (
+                              <tr key={idx} className="border-t border-gray-100">
+                                <td className="px-4 py-3 text-gray-900">{tipo.tipo}</td>
+                                <td className="px-4 py-3 text-center font-semibold text-blue-600">{formatNumber(tipo.quantidade)}</td>
+                                <td className="px-4 py-3 text-right font-semibold text-emerald-600">{formatCurrency(tipo.valor)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Vendas por Ticketeira */}
+                  {eventDetails.ticketeiras && eventDetails.ticketeiras.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-lg font-semibold text-gray-900">Por Ticketeira</h3>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {eventDetails.ticketeiras.map((tick, idx) => (
+                          <div key={idx} className="rounded-xl border border-gray-200 p-4">
+                            <p className="font-semibold text-gray-900">{tick.ticketeira}</p>
+                            <div className="mt-2 flex items-center justify-between text-sm">
+                              <span className="text-gray-600">{formatNumber(tick.quantidade)} ingressos</span>
+                              <span className="font-semibold text-emerald-600">{formatCurrency(tick.valor)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Vendas da Semana */}
+                  {eventDetails.vendas_semana && eventDetails.vendas_semana.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-lg font-semibold text-gray-900">Vendas dos Últimos 7 Dias</h3>
+                      <div className="rounded-xl border border-gray-200 overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-semibold text-gray-600">Data</th>
+                              <th className="px-4 py-3 text-center font-semibold text-gray-600">Quantidade</th>
+                              <th className="px-4 py-3 text-right font-semibold text-gray-600">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eventDetails.vendas_semana.map((dia, idx) => (
+                              <tr key={idx} className="border-t border-gray-100">
+                                <td className="px-4 py-3 text-gray-900">{new Date(dia.data + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                                <td className="px-4 py-3 text-center font-semibold text-blue-600">{formatNumber(dia.quantidade)}</td>
+                                <td className="px-4 py-3 text-right font-semibold text-emerald-600">{formatCurrency(dia.valor)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-64 items-center justify-center">
+                  <p className="text-gray-500">Não foi possível carregar os detalhes do evento.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </PageTransition>
   )
