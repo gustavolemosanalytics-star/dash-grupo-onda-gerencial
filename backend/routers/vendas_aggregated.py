@@ -310,6 +310,69 @@ async def get_filters(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/by-city")
+async def get_by_city(
+    cidade: Optional[str] = Query(None),
+    evento: Optional[str] = Query(None),
+    base_responsavel: Optional[str] = Query(None),
+    ticketeira: Optional[str] = Query(None),
+    data_evento: Optional[str] = Query(None)
+):
+    """Retorna receita agrupada por cidade do evento"""
+    try:
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
+
+        sql = f"""
+        SELECT
+            IFNULL(cidade_evento, 'Não especificada') as cidade,
+            SUM(CAST(valor_liquido AS FLOAT64)) as receita,
+            SUM(CAST(quantidade AS INT64)) as ingressos
+        FROM `{table_ref}`
+        WHERE 1=1 {where_clause}
+        GROUP BY cidade_evento
+        ORDER BY receita DESC
+        LIMIT 15
+        """
+
+        return bq_client.query(sql)
+
+    except Exception as e:
+        logger.error(f"[Vendas By City] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/by-uf")
+async def get_by_uf(
+    cidade: Optional[str] = Query(None),
+    evento: Optional[str] = Query(None),
+    base_responsavel: Optional[str] = Query(None),
+    ticketeira: Optional[str] = Query(None),
+    data_evento: Optional[str] = Query(None)
+):
+    """Retorna receita agrupada por UF do evento"""
+    try:
+        table_ref = bq_client._get_table_ref('vendas_ingresso')
+        where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
+
+        sql = f"""
+        SELECT
+            IFNULL(uf_evento, 'N/A') as uf,
+            SUM(CAST(valor_liquido AS FLOAT64)) as receita,
+            SUM(CAST(quantidade AS INT64)) as ingressos
+        FROM `{table_ref}`
+        WHERE 1=1 {where_clause}
+        GROUP BY uf_evento
+        ORDER BY receita DESC
+        """
+
+        return bq_client.query(sql)
+
+    except Exception as e:
+        logger.error(f"[Vendas By UF] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/upcoming-events")
 async def get_upcoming_events():
     """Retorna eventos futuros com métricas de vendas"""

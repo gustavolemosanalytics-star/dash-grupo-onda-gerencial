@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCcw, Calendar, Clock, X, Ticket, TrendingUp, Users } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Pie, PieChart, Cell } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { ChartCard } from '../features/dashboard/components/ChartCard'
 import { FilterBar } from '../components/FilterBar'
@@ -33,6 +33,19 @@ interface ChannelData {
 interface TypeData {
   name: string
   value: number
+  quantidade?: number
+}
+
+interface CityData {
+  cidade: string
+  receita: number
+  ingressos: number
+}
+
+interface UFData {
+  uf: string
+  receita: number
+  ingressos: number
 }
 
 interface RecentSale {
@@ -129,6 +142,18 @@ const fetchByType = async (filters: Record<string, string>): Promise<TypeData[]>
   return response.json()
 }
 
+const fetchByCity = async (filters: Record<string, string>): Promise<CityData[]> => {
+  const response = await fetch(getApiUrl('api/vendas-aggregated/by-city') + buildQueryString(filters))
+  if (!response.ok) throw new Error('Falha ao carregar cidades')
+  return response.json()
+}
+
+const fetchByUF = async (filters: Record<string, string>): Promise<UFData[]> => {
+  const response = await fetch(getApiUrl('api/vendas-aggregated/by-uf') + buildQueryString(filters))
+  if (!response.ok) throw new Error('Falha ao carregar UFs')
+  return response.json()
+}
+
 const fetchRecentSales = async (filters: Record<string, string>): Promise<RecentSale[]> => {
   const response = await fetch(getApiUrl('api/vendas-aggregated/recent-sales?limit=10') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
   if (!response.ok) throw new Error('Falha ao carregar vendas recentes')
@@ -175,8 +200,6 @@ const EmptyState = ({ onRetry }: { onRetry: () => void }) => (
     </button>
   </div>
 )
-
-const COLORS = ['#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#fb923c', '#38bdf8']
 
 // Função para converter dd/mm/yyyy para yyyy-mm-dd
 const formatDateForAPI = (dateStr: string): string => {
@@ -237,6 +260,18 @@ export function VendasIngresso() {
     staleTime: 1000 * 60 * 5,
   })
 
+  const { data: cityData, isLoading: citiesLoading } = useQuery({
+    queryKey: ['vendasByCity', filterParams],
+    queryFn: () => fetchByCity(filterParams),
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const { data: ufData, isLoading: ufsLoading } = useQuery({
+    queryKey: ['vendasByUF', filterParams],
+    queryFn: () => fetchByUF(filterParams),
+    staleTime: 1000 * 60 * 5,
+  })
+
   const { data: recentSales, isLoading: salesLoading } = useQuery({
     queryKey: ['vendasRecentSales', filterParams],
     queryFn: () => fetchRecentSales(filterParams),
@@ -279,7 +314,7 @@ export function VendasIngresso() {
     }).filter(e => e.diasFaltando >= 0)
   }, [upcomingEvents])
 
-  const isLoading = metricsLoading || eventsLoading || channelsLoading || typesLoading || salesLoading
+  const isLoading = metricsLoading || eventsLoading || channelsLoading || typesLoading || citiesLoading || ufsLoading || salesLoading
   const isError = !metrics && !metricsLoading
 
   const refetchAll = () => {
@@ -419,27 +454,20 @@ export function VendasIngresso() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* Distribuição por tipo de ingresso */}
+          {/* Receita por Tipo de Ingresso - Barras Horizontais */}
           <ChartCard
-            title="Distribuição por Tipo"
-            subtitle="Receita por tipo de ingresso"
+            title="Receita por Tipo de Ingresso"
+            subtitle="Distribuição por categoria"
           >
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={typeData as any}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {typeData?.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
+              <BarChart
+                data={typeData}
+                layout="vertical"
+                margin={{ top: 10, right: 30, left: 80, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis type="number" stroke="#94a3b8" tickFormatter={(value) => formatCompact(value)} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} width={75} />
                 <Tooltip
                   contentStyle={{
                     background: '#030712',
@@ -448,37 +476,117 @@ export function VendasIngresso() {
                   }}
                   formatter={(value: number) => formatCurrency(value)}
                 />
-              </PieChart>
+                <Bar dataKey="value" name="Receita" fill="#a78bfa" radius={[0, 8, 8, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
         </section>
 
-        {/* Vendas por canal */}
+        {/* Vendas por Canal - Gráfico de Barras */}
         <section className="rounded-2xl border border-gray-200 bg-white p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Vendas por Canal</h3>
-            <p className="text-sm text-gray-600">Desempenho de cada canal de vendas</p>
+            <h3 className="text-lg font-semibold text-gray-900">Vendas por Canal (Ticketeira)</h3>
+            <p className="text-sm text-gray-600">Receita e ingressos por canal de vendas</p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {channelData?.map((canal, index) => (
-              <div key={canal.label} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white/5 to-transparent p-5">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-10 w-10 items-center justify-center rounded-lg font-bold text-gray-900"
-                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                  >
-                    {index + 1}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900">{canal.label}</p>
-                    <p className="text-sm text-gray-600">{formatNumber(canal.quantity)} ingressos</p>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-2xl font-bold text-emerald-400">{formatCurrency(canal.value)}</p>
-                </div>
-              </div>
-            ))}
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={channelData?.map(c => ({ name: c.label, Receita: c.value, Ingressos: c.quantity }))}
+                margin={{ top: 10, right: 30, left: 0, bottom: 60 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis
+                  dataKey="name"
+                  stroke="#6B7280"
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                  interval={0}
+                  tick={{ fontSize: 11 }}
+                />
+                <YAxis stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                <Tooltip
+                  contentStyle={{
+                    background: '#FFFFFF',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px'
+                  }}
+                  formatter={(value: number, name: string) =>
+                    name === 'Receita' ? formatCurrency(value) : formatNumber(value)
+                  }
+                />
+                <Legend />
+                <Bar dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="Ingressos" fill="#34d399" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        {/* Receita por Cidade e UF */}
+        <section className="grid gap-6 lg:grid-cols-2">
+          {/* Receita por Cidade */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Receita por Cidade</h3>
+              <p className="text-sm text-gray-600">Top cidades por faturamento</p>
+            </div>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={cityData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 30, left: 100, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis type="number" stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                  <YAxis type="category" dataKey="cidade" stroke="#6B7280" tick={{ fontSize: 11 }} width={95} />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#FFFFFF',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value: number, name: string) =>
+                      name === 'receita' ? formatCurrency(value) : formatNumber(value)
+                    }
+                  />
+                  <Bar dataKey="receita" name="Receita" fill="#f472b6" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Receita por UF */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Receita por Estado (UF)</h3>
+              <p className="text-sm text-gray-600">Distribuição por unidade federativa</p>
+            </div>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={ufData}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis dataKey="uf" stroke="#6B7280" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#FFFFFF',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value: number, name: string) =>
+                      name === 'receita' ? formatCurrency(value) : formatNumber(value)
+                    }
+                  />
+                  <Bar dataKey="receita" name="Receita" fill="#fb923c" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="ingressos" name="Ingressos" fill="#38bdf8" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </section>
 
