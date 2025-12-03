@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { RefreshCcw, Calendar, Clock, X, Ticket, TrendingUp, Users } from 'lucide-react'
+import { RefreshCcw, Calendar, Clock, X, Ticket, TrendingUp, Users, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
@@ -83,8 +83,15 @@ interface TipoIngresso {
   valor: number
 }
 
-interface VendaSemana {
+interface VendaDia {
   data: string
+  quantidade: number
+  valor: number
+}
+
+interface VendaSemana {
+  semana: string
+  data_inicio: string
   quantidade: number
   valor: number
 }
@@ -106,6 +113,7 @@ interface EventDetails {
   desconto_total: number
   ticket_medio: number
   tipos_ingresso: TipoIngresso[]
+  vendas_dia: VendaDia[]
   vendas_semana: VendaSemana[]
   ticketeiras: TicketeiraVenda[]
 }
@@ -217,6 +225,9 @@ export function VendasIngresso() {
 
   // Estado para popup de detalhes do evento
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
+  const [chartViewMode, setChartViewMode] = useState<'dia' | 'semana'>('dia')
+  const [tiposPage, setTiposPage] = useState(0)
+  const TIPOS_PER_PAGE = 5
 
   // Montar objeto de filtros para as queries
   const filterParams = useMemo(() => ({
@@ -713,9 +724,13 @@ export function VendasIngresso() {
         {/* Modal de Detalhes do Evento */}
         {selectedEvent && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
               <button
-                onClick={() => setSelectedEvent(null)}
+                onClick={() => {
+                  setSelectedEvent(null)
+                  setTiposPage(0)
+                  setChartViewMode('dia')
+                }}
                 className="absolute right-4 top-4 rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
               >
                 <X size={24} />
@@ -746,59 +761,163 @@ export function VendasIngresso() {
                     </div>
                   </div>
 
-                  {/* Métricas principais */}
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 p-4">
-                      <div className="flex items-center gap-2 text-blue-600">
-                        <Ticket size={18} />
-                        <span className="text-sm font-medium">Ingressos Vendidos</span>
+                  {/* Métricas principais - números compactos */}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 p-3">
+                      <div className="flex items-center gap-1.5 text-blue-600">
+                        <Ticket size={16} />
+                        <span className="text-xs font-medium">Ingressos</span>
                       </div>
-                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatNumber(eventDetails.total_ingressos)}</p>
+                      <p className="mt-1 text-xl font-bold text-gray-900">{formatCompact(eventDetails.total_ingressos)}</p>
                     </div>
-                    <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-4">
-                      <div className="flex items-center gap-2 text-emerald-600">
-                        <TrendingUp size={18} />
-                        <span className="text-sm font-medium">Faturamento</span>
+                    <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-3">
+                      <div className="flex items-center gap-1.5 text-emerald-600">
+                        <TrendingUp size={16} />
+                        <span className="text-xs font-medium">Faturamento</span>
                       </div>
-                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(eventDetails.faturamento)}</p>
+                      <p className="mt-1 text-xl font-bold text-gray-900">{formatCompact(eventDetails.faturamento)}</p>
                     </div>
-                    <div className="rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 p-4">
-                      <div className="flex items-center gap-2 text-purple-600">
-                        <Users size={18} />
-                        <span className="text-sm font-medium">Total de Vendas</span>
+                    <div className="rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 p-3">
+                      <div className="flex items-center gap-1.5 text-purple-600">
+                        <Users size={16} />
+                        <span className="text-xs font-medium">Vendas</span>
                       </div>
-                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatNumber(eventDetails.total_vendas)}</p>
+                      <p className="mt-1 text-xl font-bold text-gray-900">{formatCompact(eventDetails.total_vendas)}</p>
                     </div>
-                    <div className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 p-4">
-                      <div className="flex items-center gap-2 text-orange-600">
-                        <TrendingUp size={18} />
-                        <span className="text-sm font-medium">Ticket Médio</span>
+                    <div className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 p-3">
+                      <div className="flex items-center gap-1.5 text-orange-600">
+                        <TrendingUp size={16} />
+                        <span className="text-xs font-medium">Ticket Médio</span>
                       </div>
-                      <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(eventDetails.ticket_medio)}</p>
+                      <p className="mt-1 text-xl font-bold text-gray-900">{formatCurrency(eventDetails.ticket_medio)}</p>
                     </div>
                   </div>
 
-                  {/* Tipos de Ingresso */}
+                  {/* Gráfico de Vendas por Dia/Semana */}
+                  {((eventDetails.vendas_dia && eventDetails.vendas_dia.length > 0) ||
+                    (eventDetails.vendas_semana && eventDetails.vendas_semana.length > 0)) && (
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 size={20} className="text-blue-600" />
+                          <h3 className="text-lg font-semibold text-gray-900">Evolução de Vendas</h3>
+                        </div>
+                        <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                          <button
+                            onClick={() => setChartViewMode('dia')}
+                            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                              chartViewMode === 'dia'
+                                ? 'bg-white text-blue-600 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            Por Dia
+                          </button>
+                          <button
+                            onClick={() => setChartViewMode('semana')}
+                            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                              chartViewMode === 'semana'
+                                ? 'bg-white text-blue-600 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            Por Semana
+                          </button>
+                        </div>
+                      </div>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={
+                              chartViewMode === 'dia'
+                                ? eventDetails.vendas_dia?.map(d => ({
+                                    label: new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+                                    Receita: d.valor,
+                                    Ingressos: d.quantidade
+                                  }))
+                                : eventDetails.vendas_semana?.map(s => ({
+                                    label: `Sem ${s.semana?.split('-W')[1] || ''}`,
+                                    Receita: s.valor,
+                                    Ingressos: s.quantidade
+                                  }))
+                            }
+                            margin={{ top: 10, right: 10, left: 0, bottom: 30 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                            <XAxis
+                              dataKey="label"
+                              stroke="#6B7280"
+                              tick={{ fontSize: 10 }}
+                              angle={-45}
+                              textAnchor="end"
+                              height={50}
+                            />
+                            <YAxis stroke="#6B7280" tickFormatter={(v) => formatCompact(v)} tick={{ fontSize: 10 }} />
+                            <Tooltip
+                              contentStyle={{
+                                background: '#FFFFFF',
+                                border: '1px solid #E5E7EB',
+                                borderRadius: '8px'
+                              }}
+                              formatter={(value: number, name: string) =>
+                                name === 'Receita' ? formatCurrency(value) : formatNumber(value)
+                              }
+                            />
+                            <Legend />
+                            <Bar dataKey="Receita" fill="#60a5fa" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="Ingressos" fill="#34d399" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tipos de Ingresso com paginação */}
                   {eventDetails.tipos_ingresso && eventDetails.tipos_ingresso.length > 0 && (
                     <div>
-                      <h3 className="mb-3 text-lg font-semibold text-gray-900">Por Tipo de Ingresso</h3>
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-gray-900">Por Tipo de Ingresso</h3>
+                        {eventDetails.tipos_ingresso.length > TIPOS_PER_PAGE && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">
+                              {tiposPage * TIPOS_PER_PAGE + 1}-{Math.min((tiposPage + 1) * TIPOS_PER_PAGE, eventDetails.tipos_ingresso.length)} de {eventDetails.tipos_ingresso.length}
+                            </span>
+                            <button
+                              onClick={() => setTiposPage(p => Math.max(0, p - 1))}
+                              disabled={tiposPage === 0}
+                              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                              <ChevronLeft size={18} />
+                            </button>
+                            <button
+                              onClick={() => setTiposPage(p => Math.min(Math.ceil(eventDetails.tipos_ingresso.length / TIPOS_PER_PAGE) - 1, p + 1))}
+                              disabled={(tiposPage + 1) * TIPOS_PER_PAGE >= eventDetails.tipos_ingresso.length}
+                              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                              <ChevronRight size={18} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <div className="rounded-xl border border-gray-200 overflow-hidden">
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-4 py-3 text-left font-semibold text-gray-600">Tipo</th>
-                              <th className="px-4 py-3 text-center font-semibold text-gray-600">Quantidade</th>
-                              <th className="px-4 py-3 text-right font-semibold text-gray-600">Valor</th>
+                              <th className="px-4 py-2.5 text-left font-semibold text-gray-600">Tipo</th>
+                              <th className="px-4 py-2.5 text-center font-semibold text-gray-600">Qtd</th>
+                              <th className="px-4 py-2.5 text-right font-semibold text-gray-600">Valor</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {eventDetails.tipos_ingresso.map((tipo, idx) => (
-                              <tr key={idx} className="border-t border-gray-100">
-                                <td className="px-4 py-3 text-gray-900">{tipo.tipo}</td>
-                                <td className="px-4 py-3 text-center font-semibold text-blue-600">{formatNumber(tipo.quantidade)}</td>
-                                <td className="px-4 py-3 text-right font-semibold text-emerald-600">{formatCurrency(tipo.valor)}</td>
-                              </tr>
-                            ))}
+                            {eventDetails.tipos_ingresso
+                              .slice(tiposPage * TIPOS_PER_PAGE, (tiposPage + 1) * TIPOS_PER_PAGE)
+                              .map((tipo, idx) => (
+                                <tr key={idx} className="border-t border-gray-100">
+                                  <td className="px-4 py-2.5 text-gray-900">{tipo.tipo}</td>
+                                  <td className="px-4 py-2.5 text-center font-semibold text-blue-600">{formatCompact(tipo.quantidade)}</td>
+                                  <td className="px-4 py-2.5 text-right font-semibold text-emerald-600">{formatCompact(tipo.valor)}</td>
+                                </tr>
+                              ))}
                           </tbody>
                         </table>
                       </div>
@@ -809,43 +928,16 @@ export function VendasIngresso() {
                   {eventDetails.ticketeiras && eventDetails.ticketeiras.length > 0 && (
                     <div>
                       <h3 className="mb-3 text-lg font-semibold text-gray-900">Por Ticketeira</h3>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {eventDetails.ticketeiras.map((tick, idx) => (
-                          <div key={idx} className="rounded-xl border border-gray-200 p-4">
-                            <p className="font-semibold text-gray-900">{tick.ticketeira}</p>
-                            <div className="mt-2 flex items-center justify-between text-sm">
-                              <span className="text-gray-600">{formatNumber(tick.quantidade)} ingressos</span>
-                              <span className="font-semibold text-emerald-600">{formatCurrency(tick.valor)}</span>
+                          <div key={idx} className="rounded-lg border border-gray-200 p-3">
+                            <p className="font-semibold text-gray-900 text-sm truncate" title={tick.ticketeira}>{tick.ticketeira}</p>
+                            <div className="mt-1.5 flex items-center justify-between text-xs">
+                              <span className="text-gray-600">{formatCompact(tick.quantidade)} ing.</span>
+                              <span className="font-semibold text-emerald-600">{formatCompact(tick.valor)}</span>
                             </div>
                           </div>
                         ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Vendas da Semana */}
-                  {eventDetails.vendas_semana && eventDetails.vendas_semana.length > 0 && (
-                    <div>
-                      <h3 className="mb-3 text-lg font-semibold text-gray-900">Vendas dos Últimos 7 Dias</h3>
-                      <div className="rounded-xl border border-gray-200 overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left font-semibold text-gray-600">Data</th>
-                              <th className="px-4 py-3 text-center font-semibold text-gray-600">Quantidade</th>
-                              <th className="px-4 py-3 text-right font-semibold text-gray-600">Valor</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {eventDetails.vendas_semana.map((dia, idx) => (
-                              <tr key={idx} className="border-t border-gray-100">
-                                <td className="px-4 py-3 text-gray-900">{new Date(dia.data + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
-                                <td className="px-4 py-3 text-center font-semibold text-blue-600">{formatNumber(dia.quantidade)}</td>
-                                <td className="px-4 py-3 text-right font-semibold text-emerald-600">{formatCurrency(dia.valor)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
                       </div>
                     </div>
                   )}

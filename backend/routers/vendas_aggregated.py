@@ -13,6 +13,71 @@ router = APIRouter(prefix="/vendas-aggregated", tags=["Vendas Aggregated"])
 logger = logging.getLogger(__name__)
 
 
+def normalize_ticket_type(tipo: str) -> str:
+    """
+    Normaliza o tipo de ingresso para categorias padronizadas.
+    Agrupa variações como FRONT, Front, front -> Front Stage
+    """
+    if not tipo:
+        return "Outros"
+
+    tipo_upper = tipo.upper()
+
+    # Front Stage - variações de front
+    if any(word in tipo_upper for word in ['FRONT', 'FRONTSTAGE', 'FRONT STAGE', 'FRONT-STAGE']):
+        return "Front Stage"
+
+    # Backstage
+    if 'BACKSTAGE' in tipo_upper or 'BACK STAGE' in tipo_upper or 'BACK-STAGE' in tipo_upper:
+        return "Backstage"
+
+    # Open Bar - deve vir antes de Open para não capturar errado
+    if 'OPEN BAR' in tipo_upper or 'OPENBAR' in tipo_upper:
+        return "Open Bar"
+
+    # Open (sem bar)
+    if tipo_upper.startswith('OPEN') or ' OPEN' in tipo_upper or 'OPEN:' in tipo_upper:
+        return "Open"
+
+    # Arena
+    if 'ARENA' in tipo_upper:
+        return "Arena"
+
+    # Premium / Pista Premium
+    if 'PREMIUM' in tipo_upper:
+        return "Premium"
+
+    # Pista (sem premium)
+    if 'PISTA' in tipo_upper:
+        return "Pista"
+
+    # Camarote
+    if 'CAMAROTE' in tipo_upper:
+        return "Camarote"
+
+    # VIP
+    if 'VIP' in tipo_upper:
+        return "VIP"
+
+    # Gramado
+    if 'GRAMADO' in tipo_upper:
+        return "Gramado"
+
+    # Cortesia
+    if 'CORTESIA' in tipo_upper or 'COURTESY' in tipo_upper:
+        return "Cortesia"
+
+    # Meia (genérico)
+    if 'MEIA' in tipo_upper and not any(x in tipo_upper for x in ['FRONT', 'OPEN', 'ARENA', 'PREMIUM', 'PISTA', 'CAMAROTE', 'VIP', 'GRAMADO']):
+        return "Meia Entrada"
+
+    # Inteira (genérico)
+    if 'INTEIRA' in tipo_upper and not any(x in tipo_upper for x in ['FRONT', 'OPEN', 'ARENA', 'PREMIUM', 'PISTA', 'CAMAROTE', 'VIP', 'GRAMADO']):
+        return "Inteira"
+
+    return "Outros"
+
+
 def build_where_clause(cidade: Optional[str] = None, evento: Optional[str] = None,
                        base_responsavel: Optional[str] = None, ticketeira: Optional[str] = None,
                        data_evento: Optional[str] = None) -> str:
@@ -161,22 +226,47 @@ async def get_by_type(
     ticketeira: Optional[str] = Query(None),
     data_evento: Optional[str] = Query(None)
 ):
-    """Retorna vendas por tipo de ingresso com filtros opcionais"""
+    """Retorna vendas por tipo de ingresso com filtros opcionais (normalizado)"""
     try:
         table_ref = bq_client._get_table_ref('vendas_ingresso')
         where_clause = build_where_clause(cidade, evento, base_responsavel, ticketeira, data_evento)
 
+        # Buscar dados brutos agrupados por tipo original
         sql = f"""
         SELECT
-            IFNULL(tipo, 'Não especificado') as name,
-            SUM(CAST(valor_liquido AS FLOAT64)) as value
+            IFNULL(tipo, 'Não especificado') as tipo_original,
+            SUM(CAST(valor_liquido AS FLOAT64)) as valor,
+            SUM(CAST(quantidade AS INT64)) as quantidade
         FROM `{table_ref}`
         WHERE 1=1 {where_clause}
         GROUP BY tipo
-        ORDER BY value DESC
+        ORDER BY valor DESC
         """
 
-        return bq_client.query(sql)
+        raw_data = bq_client.query(sql)
+
+        # Normalizar e agregar por categoria
+        normalized_data: Dict[str, Dict[str, float]] = {}
+        for row in raw_data:
+            tipo_original = row.get('tipo_original', 'Não especificado')
+            categoria = normalize_ticket_type(tipo_original)
+            valor = float(row.get('valor', 0) or 0)
+            quantidade = int(row.get('quantidade', 0) or 0)
+
+            if categoria not in normalized_data:
+                normalized_data[categoria] = {'value': 0, 'quantidade': 0}
+
+            normalized_data[categoria]['value'] += valor
+            normalized_data[categoria]['quantidade'] += quantidade
+
+        # Converter para lista ordenada por valor
+        result = [
+            {'name': categoria, 'value': data['value'], 'quantidade': data['quantidade']}
+            for categoria, data in normalized_data.items()
+        ]
+        result.sort(key=lambda x: x['value'], reverse=True)
+
+        return result
 
     except Exception as e:
         logger.error(f"[Vendas By Type] Erro: {e}")
@@ -478,36 +568,79 @@ async def get_event_details(evento: str):
         """
 
         tipos_result = bq_client.query(sql_tipos)
+
+        # Normalizar e agregar tipos
+        tipos_normalized: Dict[str, Dict[str, float]] = {}
+        for row in tipos_result:
+            tipo_original = row.get('tipo') or 'Não especificado'
+            categoria = normalize_ticket_type(tipo_original)
+            quantidade = int(row.get('quantidade') or 0)
+            valor = float(row.get('valor_total') or 0)
+
+            if categoria not in tipos_normalized:
+                tipos_normalized[categoria] = {'quantidade': 0, 'valor': 0}
+
+            tipos_normalized[categoria]['quantidade'] += quantidade
+            tipos_normalized[categoria]['valor'] += valor
+
         tipos = [
             {
-                "tipo": row.get('tipo') or 'Não especificado',
-                "quantidade": int(row.get('quantidade') or 0),
-                "valor": float(row.get('valor_total') or 0)
+                "tipo": categoria,
+                "quantidade": int(data['quantidade']),
+                "valor": data['valor']
             }
-            for row in tipos_result
+            for categoria, data in tipos_normalized.items()
         ]
+        tipos.sort(key=lambda x: x['quantidade'], reverse=True)
 
-        # Query para vendas dos últimos 7 dias
-        sql_semana = f"""
+        # Query para vendas por dia (últimos 30 dias)
+        sql_vendas_dia = f"""
         SELECT
-            FORMAT_DATE('%Y-%m-%d', created_at) as data,
+            FORMAT_DATE('%Y-%m-%d', data_venda) as data,
             SUM(quantidade) as quantidade,
             SUM(valor_liquido) as valor
         FROM `{table_ref}`
         WHERE evento = '{evento}'
-          AND created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+          AND data_venda IS NOT NULL
+          AND data_venda >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         GROUP BY data
         ORDER BY data ASC
         """
 
-        semana_result = bq_client.query(sql_semana)
-        vendas_semana = [
+        vendas_dia_result = bq_client.query(sql_vendas_dia)
+        vendas_dia = [
             {
                 "data": row.get('data'),
                 "quantidade": int(row.get('quantidade') or 0),
                 "valor": float(row.get('valor') or 0)
             }
-            for row in semana_result
+            for row in vendas_dia_result
+        ]
+
+        # Query para vendas por semana (últimas 12 semanas)
+        sql_vendas_semana = f"""
+        SELECT
+            FORMAT_DATE('%Y-W%V', data_venda) as semana,
+            MIN(FORMAT_DATE('%Y-%m-%d', data_venda)) as data_inicio,
+            SUM(quantidade) as quantidade,
+            SUM(valor_liquido) as valor
+        FROM `{table_ref}`
+        WHERE evento = '{evento}'
+          AND data_venda IS NOT NULL
+          AND data_venda >= DATE_SUB(CURRENT_DATE(), INTERVAL 12 WEEK)
+        GROUP BY semana
+        ORDER BY semana ASC
+        """
+
+        vendas_semana_result = bq_client.query(sql_vendas_semana)
+        vendas_semana = [
+            {
+                "semana": row.get('semana'),
+                "data_inicio": row.get('data_inicio'),
+                "quantidade": int(row.get('quantidade') or 0),
+                "valor": float(row.get('valor') or 0)
+            }
+            for row in vendas_semana_result
         ]
 
         # Query para vendas por ticketeira
@@ -543,6 +676,7 @@ async def get_event_details(evento: str):
             "desconto_total": float(metrics.get('desconto_total') or 0),
             "ticket_medio": float(metrics.get('ticket_medio') or 0),
             "tipos_ingresso": tipos,
+            "vendas_dia": vendas_dia,
             "vendas_semana": vendas_semana,
             "ticketeiras": ticketeiras
         }
