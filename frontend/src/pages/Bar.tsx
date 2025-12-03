@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCcw, Calendar, Clock } from 'lucide-react'
-import { BarChart, Bar as RechartsBar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { Bar as RechartsBar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Line } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
-import { formatCurrency, formatNumber } from '../lib/formatters'
+import { formatCurrency, formatNumber, formatCompact } from '../lib/formatters'
 import { getApiUrl } from '../lib/api'
 import zigLogo from '../assets/zig_logo.png'
 
@@ -19,6 +19,12 @@ interface BarMetrics {
 
 interface SalesByDate {
   date: string
+  revenue: number
+  count: number
+}
+
+interface SalesByMonth {
+  month: string
   revenue: number
   count: number
 }
@@ -76,8 +82,14 @@ const fetchSalesByDate = async (filters: Record<string, string>): Promise<SalesB
   return response.json()
 }
 
+const fetchSalesByMonth = async (filters: Record<string, string>): Promise<SalesByMonth[]> => {
+  const response = await fetch(getApiUrl('api/bar-aggregated/sales-by-month') + buildQueryString(filters))
+  if (!response.ok) throw new Error('Falha ao carregar vendas por mês')
+  return response.json()
+}
+
 const fetchTopProducts = async (filters: Record<string, string>): Promise<TopProduct[]> => {
-  const response = await fetch(getApiUrl('api/bar-aggregated/top-products?limit=5') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
+  const response = await fetch(getApiUrl('api/bar-aggregated/top-products?limit=10') + (buildQueryString(filters) ? '&' + buildQueryString(filters).slice(1) : ''))
   if (!response.ok) throw new Error('Falha ao carregar top produtos')
   return response.json()
 }
@@ -141,6 +153,7 @@ export function Bar() {
   const [eventoTipo, setEventoTipo] = useState('')
   const [eventName, setEventName] = useState('')
   const [eventDate, setEventDate] = useState('')
+  const [salesViewMode, setSalesViewMode] = useState<'dia' | 'mes'>('dia')
 
   // Montar objeto de filtros para as queries
   const filterParams = useMemo(() => ({
@@ -166,6 +179,12 @@ export function Bar() {
   const { data: salesByDate, isLoading: salesLoading } = useQuery({
     queryKey: ['barSalesByDate', filterParams],
     queryFn: () => fetchSalesByDate(filterParams),
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const { data: salesByMonth } = useQuery({
+    queryKey: ['barSalesByMonth', filterParams],
+    queryFn: () => fetchSalesByMonth(filterParams),
     staleTime: 1000 * 60 * 5,
   })
 
@@ -373,26 +392,72 @@ export function Bar() {
           </section>
         )}
 
-        {/* Gráfico de vendas por data */}
-        {salesByDate && salesByDate.length > 0 && (
+        {/* Gráfico de vendas por data/mês */}
+        {((salesByDate && salesByDate.length > 0) || (salesByMonth && salesByMonth.length > 0)) && (
           <section className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Vendas por Data</h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Vendas por Período</h3>
+              <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                <button
+                  onClick={() => setSalesViewMode('dia')}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    salesViewMode === 'dia'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Por Dia
+                </button>
+                <button
+                  onClick={() => setSalesViewMode('mes')}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    salesViewMode === 'mes'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Por Mês
+                </button>
+              </div>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={salesByDate}>
+              <ComposedChart
+                data={
+                  salesViewMode === 'dia'
+                    ? salesByDate?.map(d => ({
+                        label: new Date(d.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+                        Faturamento: d.revenue,
+                        Quantidade: d.count
+                      }))
+                    : salesByMonth?.map(m => ({
+                        label: (() => {
+                          const [year, month] = m.month.split('-')
+                          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+                          return `${monthNames[parseInt(month) - 1]}/${year.slice(2)}`
+                        })(),
+                        Faturamento: m.revenue,
+                        Quantidade: m.count
+                      }))
+                }
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="date" stroke="#6B7280" fontSize={12} />
-                <YAxis stroke="#6B7280" fontSize={12} />
+                <XAxis dataKey="label" stroke="#6B7280" fontSize={11} angle={-45} textAnchor="end" height={50} />
+                <YAxis yAxisId="left" stroke="#6B7280" fontSize={11} tickFormatter={(v) => formatCompact(v)} />
+                <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" fontSize={11} tickFormatter={(v) => formatCompact(v)} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#FFFFFF',
                     border: '1px solid #E5E7EB',
                     borderRadius: '8px',
                   }}
+                  formatter={(value: number, name: string) =>
+                    name === 'Faturamento' ? formatCurrency(value) : formatNumber(value)
+                  }
                 />
                 <Legend />
-                <RechartsBar dataKey="revenue" name="Faturamento" fill="#ec4899" />
-                <RechartsBar dataKey="count" name="Quantidade" fill="#3b82f6" />
-              </BarChart>
+                <RechartsBar yAxisId="left" dataKey="Faturamento" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="Quantidade" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} />
+              </ComposedChart>
             </ResponsiveContainer>
           </section>
         )}
@@ -401,7 +466,7 @@ export function Bar() {
         <section className="grid gap-6 lg:grid-cols-2">
           {/* Top Produtos */}
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Top 5 Produtos</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Top 10 Produtos</h3>
             <p className="text-sm text-gray-600">Mais vendidos por faturamento</p>
             <div className="mt-6 space-y-4">
               {topProducts?.map((product, index) => (

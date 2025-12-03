@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCcw, Calendar, Clock, X, Ticket, TrendingUp, Users, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, ComposedChart, Line } from 'recharts'
 import { PageTransition } from '../components/PageTransition'
 import { FilterBar } from '../components/FilterBar'
 import { WaveLoader } from '../components/WaveLoader'
@@ -504,18 +504,19 @@ export function VendasIngresso() {
 
         {/* Gráficos de análise */}
         <section className="grid gap-6 lg:grid-cols-2">
-          {/* Vendas por evento */}
+          {/* Vendas por evento - Barras (Receita) + Linha (Ingressos) */}
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Vendas por Evento</h3>
-              <p className="text-sm text-gray-600">Top 10 eventos por receita</p>
+              <p className="text-sm text-gray-600">Top 10 eventos - Receita (barras) e Ingressos (linha)</p>
             </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={eventData} margin={{ top: 10, right: 30, left: 0, bottom: 60 }}>
+                <ComposedChart data={eventData} margin={{ top: 10, right: 50, left: 0, bottom: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="name" stroke="#6B7280" angle={-45} textAnchor="end" height={60} interval={0} tick={{ fontSize: 10 }} />
-                  <YAxis stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                  <YAxis yAxisId="left" stroke="#60a5fa" tickFormatter={(value) => formatCompact(value)} tick={{ fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" stroke="#34d399" tickFormatter={(value) => formatCompact(value)} tick={{ fontSize: 10 }} />
                   <Tooltip
                     contentStyle={{
                       background: '#FFFFFF',
@@ -527,9 +528,9 @@ export function VendasIngresso() {
                     }
                   />
                   <Legend />
-                  <Bar dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="Ingressos" fill="#34d399" radius={[8, 8, 0, 0]} />
-                </BarChart>
+                  <Bar yAxisId="left" dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="Ingressos" stroke="#34d399" strokeWidth={2} dot={{ fill: '#34d399', r: 4 }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -565,17 +566,17 @@ export function VendasIngresso() {
           </div>
         </section>
 
-        {/* Vendas por Canal - Gráfico de Barras */}
+        {/* Vendas por Canal - Barras (Receita) + Linha (Ingressos) */}
         <section className="rounded-2xl border border-gray-200 bg-white p-6">
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Vendas por Canal (Ticketeira)</h3>
-            <p className="text-sm text-gray-600">Receita e ingressos por canal de vendas</p>
+            <p className="text-sm text-gray-600">Receita (barras) e Ingressos (linha) por canal</p>
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
+              <ComposedChart
                 data={channelData?.map(c => ({ name: c.label, Receita: c.value, Ingressos: c.quantity }))}
-                margin={{ top: 10, right: 30, left: 0, bottom: 60 }}
+                margin={{ top: 10, right: 50, left: 0, bottom: 60 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis
@@ -587,7 +588,8 @@ export function VendasIngresso() {
                   interval={0}
                   tick={{ fontSize: 11 }}
                 />
-                <YAxis stroke="#6B7280" tickFormatter={(value) => formatCompact(value)} />
+                <YAxis yAxisId="left" stroke="#60a5fa" tickFormatter={(value) => formatCompact(value)} tick={{ fontSize: 10 }} />
+                <YAxis yAxisId="right" orientation="right" stroke="#34d399" tickFormatter={(value) => formatCompact(value)} tick={{ fontSize: 10 }} />
                 <Tooltip
                   contentStyle={{
                     background: '#FFFFFF',
@@ -599,9 +601,9 @@ export function VendasIngresso() {
                   }
                 />
                 <Legend />
-                <Bar dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="Ingressos" fill="#34d399" radius={[8, 8, 0, 0]} />
-              </BarChart>
+                <Bar yAxisId="left" dataKey="Receita" fill="#60a5fa" radius={[8, 8, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="Ingressos" stroke="#34d399" strokeWidth={2} dot={{ fill: '#34d399', r: 4 }} />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </section>

@@ -113,9 +113,38 @@ async def get_sales_by_date(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/sales-by-month")
+async def get_sales_by_month(
+    evento_tipo: Optional[str] = Query(None),
+    event_name: Optional[str] = Query(None),
+    event_date: Optional[str] = Query(None)
+):
+    """Retorna vendas agregadas por mês com filtros opcionais"""
+    try:
+        table_ref = bq_client._get_table_ref('bar_zig')
+        where_clause = build_where_clause(evento_tipo, event_name, event_date)
+
+        sql = f"""
+        SELECT
+            FORMAT_DATE('%Y-%m', transactionDate) as month,
+            SUM((unitValue * count - IFNULL(discountValue, 0)) / 100) as revenue,
+            SUM(count) as count
+        FROM `{table_ref}`
+        WHERE {where_clause}
+        GROUP BY month
+        ORDER BY month
+        """
+
+        return bq_client.query(sql)
+
+    except Exception as e:
+        logger.error(f"[Bar Sales By Month] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/top-products")
 async def get_top_products(
-    limit: int = 5,
+    limit: int = 10,
     evento_tipo: Optional[str] = Query(None),
     event_name: Optional[str] = Query(None),
     event_date: Optional[str] = Query(None)
