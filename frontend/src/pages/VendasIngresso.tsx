@@ -224,7 +224,7 @@ export function VendasIngresso() {
   const [dataEvento, setDataEvento] = useState('')
 
   // Estado para popup de detalhes do evento
-  const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<{ evento: string; dataFormatada: string } | null>(null)
   const [chartViewMode, setChartViewMode] = useState<'dia' | 'semana'>('dia')
   const [tiposPage, setTiposPage] = useState(0)
   const TIPOS_PER_PAGE = 5
@@ -297,8 +297,8 @@ export function VendasIngresso() {
 
   // Query para detalhes do evento selecionado
   const { data: eventDetails, isLoading: eventDetailsLoading } = useQuery({
-    queryKey: ['vendasEventDetails', selectedEvent],
-    queryFn: () => fetchEventDetails(selectedEvent!),
+    queryKey: ['vendasEventDetails', selectedEvent?.evento],
+    queryFn: () => fetchEventDetails(selectedEvent!.evento),
     enabled: !!selectedEvent,
     staleTime: 1000 * 60 * 5,
   })
@@ -453,7 +453,7 @@ export function VendasIngresso() {
                 return (
                   <button
                     key={index}
-                    onClick={() => setSelectedEvent(item.evento)}
+                    onClick={() => setSelectedEvent({ evento: item.evento, dataFormatada: item.dataFormatada })}
                     className={`rounded-xl border-2 p-4 text-left transition hover:shadow-md ${
                       isToday
                         ? 'border-red-300 bg-red-50 hover:bg-red-100'
@@ -750,12 +750,14 @@ export function VendasIngresso() {
                     <p className="mt-1 text-gray-600">{eventDetails.cidade}</p>
                     <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
                       <Calendar size={16} />
-                      <span>{new Date(eventDetails.data_evento + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                      <span>{selectedEvent.dataFormatada}</span>
                       <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
                         {(() => {
                           const hoje = new Date()
                           hoje.setHours(0, 0, 0, 0)
-                          const eventDate = new Date(eventDetails.data_evento + 'T00:00:00')
+                          // Parse dataFormatada (dd/mm/yyyy) to calculate days remaining
+                          const [day, month, year] = selectedEvent.dataFormatada.split('/')
+                          const eventDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
                           const dias = Math.ceil((eventDate.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
                           return dias === 0 ? 'HOJE' : dias === 1 ? 'Amanhã' : `${dias} dias`
                         })()}
